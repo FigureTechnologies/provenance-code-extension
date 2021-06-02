@@ -1,70 +1,86 @@
-# provenance-code-extension README
+<div align="center">
+<img src="./media/logo.png" alt="Provenance"/>
+</div>
+<br/><br/>
 
-This is the README for your extension "provenance-code-extension". After writing up a brief description, we recommend including the following sections.
+# Provenance Visual Studio Code Extension
+
+[Provenance] is a distributed, proof of stake blockchain designed for the financial services industry.
+
+For more information about [Provenance Inc](https://provenance.io) visit https://provenance.io
+
+[provenance]: https://provenance.io/#overview
 
 ## Features
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+The Provenance Visual Studio Code extension provides an all-in-one development environment for developing ProvWASM smart contracts:
 
-For example if there is an image subfolder under your extension project workspace:
-
-\!\[feature X\]\(images/feature-x.png\)
-
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+* Compile smart contract web assembly code from Makefile.
+* Stores/instantiates/migrates WASM code on the blockchain.
+* Dynamically generated UI for executing transactions and running queries against the smart contract.
 
 ## Requirements
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+### Rust Toolchain
+
+Install Rust:
+```sh
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+Configure the shell:
+```sh
+source $HOME/.cargo/env
+```
+
+Ensure the stable toolchain is used by default:
+```sh
+rustup default stable
+```
+
+Add the wasm32 target:
+```sh
+rustup target add wasm32-unknown-unknown
+```
+
+Install the cargo-generate crate:
+```sh
+cargo install cargo-generate --features vendored-openssl
+```
+
+### Go 1.15+
+
+Download and install the Go runtime from [here](https://golang.org/dl/).
+
+### Provenance Client + Local Network
+
+Clone, build and start a local network using the instructions found [here](https://github.com/provenance-io/provenance).
 
 ## Extension Settings
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+This extension contributes the following provenance client settings:
 
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: enable/disable this extension
-* `myExtension.thing`: set to `blah` to do something
+* `provenance.adminAddress`: Address of an admin (--admin).
+* `provenance.broadcastMode`: Transaction broadcasting mode (--broadcast-mode).
+* `provenance.chainId`: The network chain ID (--chain-id).
+* `provenance.clientBinary`: The path to the provenanced client binary.
+* `provenance.defaultFees`: Default fees to pay along with transaction in nhash (--fees).
+* `provenance.gasLimit`: Gas limit to set per-transaction. Set to 'auto' to calculate sufficient gas automatically (--gas).
+* `provenance.gasAdjustment`: Adjustment factor to be multiplied against the estimate returned by the tx simulation (--gas-adjustment).
+* `provenance.homeDir`: Local directory for config and data. Defaults to '~/Library/Application Support/Provenance' (--home).
+* `provenance.keyringBackend`: The keyring's backend (--keyring-backend).
+* `provenance.keyringDirectory`: The client Keyring directory. If omitted, the default 'home' directory will be used (--keyring-dir).
+* `provenance.nodeHostAddress`: Node host address (tcp://<host>:<port>) to tendermint rpc interface for this chain (--node).
+* `provenance.signingPrivateKey`: Name or address of private key with which to sign transaction (--from).
+* `provenance.testNet`: Indicates this command should use the testnet configuration (--test-net).
 
 ## Known Issues
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+* The builder function for running contracts currently does not support object or array data types. For now, use the JSON function to construct complex messages for transactions/queries.
+* The extension is still fairly new and lacks some features.
 
 ## Release Notes
 
-Users appreciate release notes as you update your extension.
+### 0.0.1
 
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
------------------------------------------------------------------------------------------------------------
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-**Note:** You can author your README using Visual Studio Code.  Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux)
-* Toggle preview (`Shift+CMD+V` on macOS or `Shift+Ctrl+V` on Windows and Linux)
-* Press `Ctrl+Space` (Windows, Linux) or `Cmd+Space` (macOS) to see a list of Markdown snippets
-
-### For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+* Initial release.
