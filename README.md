@@ -1,5 +1,5 @@
 <div align="center">
-<img src="./media/logo.png" alt="Provenance"/>
+<img src="./docs/logo.png" alt="Provenance"/>
 </div>
 <br/><br/>
 
