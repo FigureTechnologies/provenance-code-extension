@@ -1,0 +1,33 @@
+.card.detailsCard {
+    border-color: transparent;
+    border: 0px;
+    border-radius: 0px;
+}
+
+.detailsCard .card-header {
+    background-color: rgb(41, 45, 62);
+    border-radius: 0px;
+    color: #fff;
+
+    :first-child {
+        border-radius: 0px;
+    }
+}
+
+.detailsCard .card-header:first-child {
+    border-radius: 0px;
+}
+
+.detailsCard .card-body {
+    background-color: rgb(31, 34, 46);
+    color: #fff;
+}
+
+.accountDetailsField {
+    font-family: monospace;
+}
+
+.noAssetsMarkers {
+    font-size: 1rem;
+    font-weight: bold;
+}

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as glob from 'glob';
 
 import { Utils, SmartContractFunctions } from './utils';
-import { Key, Provenance, ProvenanceConfig } from './ProvenanceClient'
+import { Key, Marker, Provenance, ProvenanceConfig, ProvenanceMarkerConfig } from './ProvenanceClient'
 
 import { ChainViewAppBinding } from './webviews/chain-panel/app/app-binding';
 import { ChainPanelViewLoader } from './webviews/chain-panel/ChainPanelViewLoader';
@@ -11,6 +11,8 @@ import { Alert, RunViewAppBinding } from './webviews/run-panel/app/app-binding';
 import { RunPanelViewLoader } from './webviews/run-panel/RunPanelViewLoader';
 
 import { SmartContractFunction } from './webviews/run-panel/app/smart-contract-function';
+import { ProvenanceAccountBalance } from './webviews/chain-panel/app/provenance-account-balance';
+import { ProvenanceKey } from './webviews/chain-panel/app/provenance-key';
 
 let provenance: Provenance = new Provenance();
 let lastWasmCodeId: number = -1;
@@ -83,10 +85,144 @@ function storeWasm(): Promise<number> {
 	});
 }
 
+async function ensureKeysExist(keys: string[]): Promise<void> {
+	return new Promise<void>((resolve, reject) => {
+		var createKeys: Promise<Key>[] = [];
+
+		keys.forEach((key) => {
+			if (!provenance.doesKeyExist(key)) {
+				createKeys.push(provenance.createKey(key));
+			}
+		});
+
+		Promise.all(createKeys).then((createdKeys: Key[]) => {
+			createdKeys.forEach((createdKey) => {
+				console.log(`Created key ${createdKey.name} -> ${createdKey.address}`);
+			});
+			resolve();
+		}).catch((err) => {
+			reject(err);
+		});
+	});
+}
+
+async function ensureMarkersExist(markers: ProvenanceMarkerConfig[]): Promise<void> {
+	return new Promise<void>((resolve, reject) => {
+		var createMarkers: Promise<Marker>[] = [];
+
+		markers.forEach((marker) => {
+			console.log(`Checking if marker exists: ${marker.denom}`);
+			if (!provenance.doesMarkerExist(marker.denom)) {
+				console.log(`Marker does not exist: ${marker.denom}`);
+				createMarkers.push(provenance.createMarker(marker.denom, marker.supply, marker.manager, marker.privs));
+			} else {
+				console.log(`Marker exists: ${marker.denom}`);
+			}
+			// TODO: check if marker is active... maybe getMarker and check state?
+		});
+		
+		Promise.all(createMarkers).then((createdMarkers: Marker[]) => {
+			createdMarkers.forEach((createdMarker) => {
+				console.log(`Created marker ${createdMarker.denom} with supply of ${createdMarker.supply}`);
+			});
+			resolve();
+		}).catch((err) => {
+			reject(err);
+		});
+	});
+}
+
+async function resolveArg(arg: string): Promise<any> {
+	return new Promise<any>((resolve, reject) => {
+		const call = arg.split("::");
+		const ns = call[0];
+		var args = call[1].split(/[(,) ]+/);
+		const func = args[0];
+		args.shift();
+		args.pop();
+
+		if (ns == 'provenance') {
+			if (func == 'getAddressForKey') {
+				// TODO: ensure # args is correct
+				resolve(provenance.getAddressForKey(args[0]));
+			} else {
+				reject(new Error(`Unknown function ${func} in namespace ${ns}`));
+			}
+		} else {
+			reject(new Error(`Unknown namespace ${ns}`));
+		}
+	});
+}
+
+async function generateInitArgs(args: any): Promise<any> {
+	return new Promise<any>((resolve, reject) => {
+		var initArgs: {[k: string]: any} = {};
+
+		Object.keys(args).forEach(async function (key) {
+			if (typeof args[key] == 'string') {
+				if (args[key].startsWith('${') && args[key].endsWith('}')) {
+					initArgs[key] = await resolveArg(args[key].slice(2, -1));
+				} else {
+					initArgs[key] = args[key];
+				}
+			} else if (Array.isArray(args[key])) {
+				initArgs[key] = [];
+				args[key].forEach(async (value: any) => {
+					if (typeof value == 'string') {
+						if (value.startsWith('${') && value.endsWith('}')) {
+							initArgs[key].push(await resolveArg(value.slice(2, -1)));
+						} else {
+							initArgs[key].push(value);
+						}
+					} else if (typeof value == 'object') {
+						initArgs[key].push(await generateInitArgs(value));
+					} else {
+						initArgs[key].push(value);
+					}
+				});
+			} else if (typeof args[key] == 'object') {
+				initArgs[key] = await generateInitArgs(args[key]);
+			} else {
+				initArgs[key] = args[key];
+			}
+		});
+
+		resolve(initArgs);
+	});
+}
+
 function instantiateOrMigrateWasm(codeId: number): Promise<void> {
 	const promise = new Promise<void>((resolve, reject) => {
 		// load the provenance config for the project
-		Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+		Utils.loadProvenanceConfig().then(async (config: ProvenanceConfig) => {
+			// ensure that the keys from the project config environment exist
+			if (config.env && config.env.keys && config.env.keys.length > 0) {
+				try {
+					await ensureKeysExist(config.env.keys);
+				} catch (err) {
+					return reject(err);
+				}
+			}
+
+			// ensure that the markers from the project config environment exist
+			if (config.env && config.env.markers && config.env.markers.length > 0) {
+				try {
+					await ensureMarkersExist(config.env.markers);
+				} catch (err) {
+					return reject(err);
+				}
+			}
+
+			// generate the init args
+			var initArgs = {};
+			try {
+				initArgs = await generateInitArgs(config.initArgs);
+				console.log('Using init args:');
+				console.dir(initArgs);
+			} catch (err) {
+				return reject(err);
+			}
+
 			// find the latest code id for the contract by its label
 			provenance.getLatestCodeIdByContractLabel(config.contractLabel).then((latestCodeId: number) => {
 				console.log(`Latest codeId for ${config.contractLabel} is ${latestCodeId}`);
@@ -96,7 +232,7 @@ function instantiateOrMigrateWasm(codeId: number): Promise<void> {
 					// setup name binding for the contract
 					provenance.bindName(config.binding.name, config.binding.root, false).then(() => {
 						// instantiate the contract
-						provenance.instantiateWasm(codeId, config.initArgs, config.contractLabel).then(() => {
+						provenance.instantiateWasm(codeId, initArgs, config.contractLabel).then(() => {
 							resolve();
 						}).catch((err: Error) => {
 							reject(err);
@@ -203,9 +339,7 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	let chainUtils = vscode.commands.registerCommand(chainUtilsCommand, () => {
-		console.log('chainUtils 1');
 		chainViewApp = ChainViewAppBinding.getCodeInstance(chainPanelView.showView(`Provenance: Blockchain Utils`));
-		console.log('chainUtils 2');
 		chainPanelView.onDispose(() => {
 			console.log('chainPanelView.onDispose');
 			chainViewApp.unready();
@@ -215,16 +349,37 @@ export function activate(context: vscode.ExtensionContext) {
 			updateChainView();
 		});
 
-		console.log('chainUtils 3');
-
 		chainViewApp.waitForReady().then(() => {
 			console.log('Chain view ready!');
 			updateChainView();
+
+			// hook up execute function request handler
+			chainViewApp.onGetAccountBalancesRequest((address: string, resolve: ((result: ProvenanceAccountBalance[]) => void), reject: ((err: Error) => void)) => {
+				console.log('onGetAccountBalancesRequest');
+
+				provenance.getAccountBalances(address).then((result) => {
+					resolve(result);
+				}).catch((err: Error) => {
+					vscode.window.showErrorMessage(err.message);
+					reject(err);
+				});
+			});
+
+			chainViewApp.onCreateKeyRequest((name: string, resolve: ((result: ProvenanceKey) => void), reject: ((err: Error) => void)) => {
+				console.log('onCreateKeyRequest');
+
+				provenance.createKey(name).then((result) => {
+					resolve(result);
+				}).catch((err: Error) => {
+					vscode.window.showErrorMessage(err.message);
+					reject(err);
+				});
+			});
 		});
 	});
 
 	let geyKeys = vscode.commands.registerCommand(getKeysCommand, () => {
-		provenance.getKeys().then((keys: Key[]) => {
+		provenance.getAllKeys().then((keys: Key[]) => {
 			console.dir(keys);
 		}).catch((err) => {
 			vscode.window.showErrorMessage(err.message);
@@ -427,7 +582,7 @@ function updateRunView(config: ProvenanceConfig): void {
 		});
 
 		// get signing keys
-		provenance.getKeys().then((keys) => {
+		provenance.getAllKeys().then((keys) => {
 			console.log('Setting keys...');
 			runViewApp.signingKeys = keys;
 		}).catch((err) => {
@@ -447,7 +602,13 @@ function updateRunView(config: ProvenanceConfig): void {
 
 function updateChainView(): void {
 	if(chainViewApp.isReady) {
-		// TODO
+		// get accounts/keys
+		provenance.getAllKeys().then((keys) => {
+			console.log('Setting keys...');
+			chainViewApp.keys = keys;
+		}).catch((err) => {
+			vscode.window.showErrorMessage(err.message);
+		});
 	}
 }
 

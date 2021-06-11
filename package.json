@@ -5,8 +5,8 @@
 	"version": "0.0.1",
 	"publisher": "Provenance Blockchain Foundation, LLC.",
 	"author": {
-		"name" : "Kory Herzinger",
-  		"email" : "kherzinger@figure.com"
+		"name": "Kory Herzinger",
+		"email": "kherzinger@figure.com"
 	},
 	"icon": "media/icon.png",
 	"engines": {
@@ -236,6 +236,7 @@
 	},
 	"dependencies": {
 		"ace-builds": "^1.4.12",
+		"async": "^3.2.0",
 		"bootstrap": "^4.6.0",
 		"react": "^17.0.2",
 		"react-ace": "^9.4.0",

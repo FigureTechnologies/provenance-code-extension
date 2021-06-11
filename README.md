@@ -77,6 +77,7 @@ This extension contributes the following provenance client settings:
 ## Known Issues
 
 * The builder function for running contracts currently does not support object or array data types. For now, use the JSON function to construct complex messages for transactions/queries.
+* Currently only supports singleton contracts. Multi-instance contracts coming soon.
 * The extension is still fairly new and lacks some features.
 
 ## Release Notes

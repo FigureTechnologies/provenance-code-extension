@@ -20,7 +20,7 @@ export class ChainPanelViewLoader {
             this.panel = vscode.window.createWebviewPanel(
                 'chain-panel',
                 title,
-                vscode.ViewColumn.Beside,
+                vscode.ViewColumn.Active,
                 {
                     enableScripts: true,
                     localResourceRoots: [

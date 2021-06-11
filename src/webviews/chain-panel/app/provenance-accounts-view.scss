@@ -1,0 +1,28 @@
+.card.tableCard {
+    border-color: transparent;
+    border: 0px;
+    border-radius: 0px;
+}
+
+.tableCard .card-header {
+    background-color: rgb(41, 45, 62);
+    border-radius: 0px;
+    color: #fff;
+
+    :first-child {
+        border-radius: 0px;
+    }
+}
+
+.tableCard .card-header:first-child {
+    border-radius: 0px;
+}
+
+.tableCard .card-body {
+    background-color: rgb(31, 34, 46);
+    color: #fff;
+}
+
+.accountTableField {
+    font-family: monospace;
+}
