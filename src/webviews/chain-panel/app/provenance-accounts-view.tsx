@@ -1,6 +1,7 @@
 import * as React from "react";
 import './provenance-accounts-view.scss';
-import { FaArrowUp, FaPlus } from 'react-icons/fa';
+import { FaArrowUp, FaPlus, FaTrashAlt } from 'react-icons/fa';
+import Dialog from 'react-bootstrap-dialog';
 
 import { Breadcrumb, Button, Card, OverlayTrigger, Table, Tooltip } from 'react-bootstrap';
 import { Alert, ChainViewAppBinding } from './app-binding';
@@ -40,6 +41,8 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
         };
     }
 
+    confirmDeleteDialog: Dialog;
+
     render() {
         const keys = this.props.accountKeys;
 
@@ -57,6 +60,22 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
                 });
             }).catch((err) => {
                 // TODO: set error message
+            });
+        };
+
+        const deleteKey = (k) => {
+            this.confirmDeleteDialog.show({
+                title: 'Confirm delete key',
+                body: `Are you sure you want to delete the key "${k.name}"?`,
+                bsSize: 'small',
+                actions: [
+                    Dialog.OKAction(() => {
+                        Utils.deleteKey(k.name).catch((err) => {
+                            Utils.showAlert(Alert.Danger, `Unable to delete key "${k.name}"`, err.message, true);
+                        });
+                    }),
+                    Dialog.CancelAction()
+                ]
             });
         };
 
@@ -96,6 +115,10 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
 
         const renderAddKeyTooltip = (props) => (
             <Tooltip id="add-button-tooltip" {...props}>New key/account</Tooltip>
+        );
+
+        const renderDeleteKeyTooltip = (props) => (
+            <Tooltip id="delete-button-tooltip" {...props}>Delete key</Tooltip>
         );
 
         return (
@@ -143,6 +166,7 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
                                         <th>Name</th>
                                         <th>Type</th>
                                         <th>Address</th>
+                                        <th>&nbsp;</th>
                                     </tr>
                                 </thead>
                                 <tbody className="accountTableField noselect">
@@ -151,6 +175,15 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
                                             <td>{key.name}</td>
                                             <td>{key.type}</td>
                                             <td><a href="#" onClick={() => showAccountDetails(key)}>{key.address}</a></td>
+                                            <td>
+                                                <OverlayTrigger
+                                                    placement="right"
+                                                    delay={{ show: 250, hide: 400 }}
+                                                    overlay={renderDeleteKeyTooltip}
+                                                >
+                                                    <a href="#" className="actions" onClick={() => deleteKey(key)}><FaTrashAlt /></a>
+                                                </OverlayTrigger>
+                                            </td>
                                         </tr>
                                     )}
                                 </tbody>
@@ -183,6 +216,7 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
                         Utils.showAlert(Alert.Danger, `Unable to create new key`, err.message, true);
                     }}
                 ></AddKeyModal>
+                <Dialog ref={(el) => { this.confirmDeleteDialog = el }} />
             </React.Fragment>
         );
     }

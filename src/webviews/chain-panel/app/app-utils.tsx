@@ -13,6 +13,11 @@ export class Utils {
         return appBinding.recoverKey(name, mnemonic);
     }
 
+    static deleteKey (name: string): Promise<void> {
+        const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();
+        return appBinding.deleteKey(name);
+    }
+
     static showAlert (type: Alert, title: string, body: string, dismissable: boolean): Promise<void> {
         return new Promise<void>((resolve, reject) => {
             const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();

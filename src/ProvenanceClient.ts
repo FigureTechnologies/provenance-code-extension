@@ -786,6 +786,20 @@ export class Provenance {
 		});
 	}
 
+	deleteKey(name: string): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			// reload the settings
+			this.loadSettings();
+
+			try {
+				child_process.execSync(`${this.settings.clientBinary || 'provenanced'} ${ProvenanceCommand.Keys} ${KeysCommand.Delete} ${name} --home ${this.settings.homeDir} ${this.settings.testNet ? ProvenanceClientFlags.TestNet : ''} --yes`);
+				resolve();
+			} catch (err) {
+				reject(new Error(`Failed to delete key ${name}`));
+			}
+		});
+	}
+
 	newMarker(denom: string, supply: number, manager: string): Promise<void> {
 		// reload the settings
 		this.loadSettings();

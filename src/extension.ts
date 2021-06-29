@@ -437,6 +437,7 @@ export function activate(context: vscode.ExtensionContext) {
 				provenance.createKey(name).then((result) => {
 					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
 						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Keys);
+						RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.SigningKeys);
 					});
 					resolve(result);
 				}).catch((err: Error) => {
@@ -451,9 +452,25 @@ export function activate(context: vscode.ExtensionContext) {
 				provenance.recoverKey(name, mnemonic).then((result) => {
 					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
 						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Keys);
+						RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.SigningKeys);
 					});
 					resolve(result);
 				}).catch((err: Error) => {
+					vscode.window.showErrorMessage(err.message);
+					reject(err);
+				});
+			});
+
+			chainViewApp.onDeleteKeyRequest((name: string, resolve: (() => void), reject: ((err: Error) => void)) => {
+				console.log('onDeleteKeyRequest');
+
+				provenance.deleteKey(name).then(() => {
+					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Keys);
+						RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.SigningKeys);
+					});
+					resolve();
+				}).catch((err) => {
 					vscode.window.showErrorMessage(err.message);
 					reject(err);
 				});
