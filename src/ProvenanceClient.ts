@@ -12,15 +12,26 @@ interface ProvenanceBuildConfig {
 	target: string
 }
 
+export interface ProvenanceMarkerGrant {
+	key: string,
+	privs: MarkerAccess[]
+}
+
 export interface ProvenanceMarkerConfig {
 	denom: string,
 	supply: number,
 	manager: string,
-	privs: MarkerAccess[]
+	grants: ProvenanceMarkerGrant[]
+}
+
+export interface ProvenanceKeyConfig {
+	name: string,
+	minHash: number,
+	initialHash: number
 }
 
 export interface ProvenanceEnvConfig {
-	keys: string[],
+	keys: ProvenanceKeyConfig[],
 	markers: ProvenanceMarkerConfig[]
 }
 
@@ -29,6 +40,7 @@ export interface ProvenanceConfig {
 	build: ProvenanceBuildConfig,
 	binding: ProvenanceNameBindingConfig,
 	initArgs: any,
+	isSingleton: boolean,
 	env: ProvenanceEnvConfig
 }
 
@@ -219,7 +231,8 @@ enum BankQueryCommand {
 }
 
 enum MarkerQueryCommand {
-	Get = "get"
+	Get = "get",
+	List = "list"
 }
 
 enum WASMContractStateCommand {
@@ -232,7 +245,8 @@ enum MarkerTransactionCommand {
 	Activate = "activate",
 	Finalize = "finalize",
 	Grant = "grant",
-	New = "new"
+	New = "new",
+	Withdraw = "withdraw"
 }
 
 enum NameTransactionCommand {
@@ -424,6 +438,43 @@ export class Provenance {
 		return promise
 	}
 
+	executeWithCoin(contract: Contract, execMsg: any, key: (string | undefined), amount: number, denom: string): Promise<any> {
+		const promise = new Promise<void>((resolve, reject) => {
+			// reload the settings
+			this.loadSettings();
+
+			// use the signing key if provided
+			var overrides: {[k: string]: any} = {};
+			if (key) {
+				overrides[ProvenanceClientFlags.From] = key;
+			}
+
+			// build the command
+			const command = this.buildCommandArray([
+				ProvenanceCommand.TX, 
+				TransactionCommand.WASM, 
+				WASMTransactionCommand.Execute, 
+				contract.address,
+				`${JSON.stringify(execMsg)}`
+			], overrides, {
+				'--amount': `${amount.toString()}${denom}`
+			}, true);
+
+			let result: any = {};
+			let result_data: string = '';
+			Utils.runCommandWithArray(command, (data: string) => {
+				result_data = result_data + data;
+			}).then (() => {
+				result = JSON.parse(result_data);
+				resolve(result);
+			}).catch((err) => {
+				reject(new Error("Failed to execute the contract with coin"));
+			});
+		});
+
+		return promise
+	}
+
 	query(contract: Contract, queryMsg: any): Promise<any> {
 		const promise = new Promise<void>((resolve, reject) => {
 			// reload the settings
@@ -512,6 +563,31 @@ export class Provenance {
 		});
 	}
 
+	getAllMarkers(): Promise<Marker[]> {
+		return new Promise<Marker[]>((resolve, reject) => {
+			var provMarkers: Marker[] = [];
+
+			const listedMarkers = child_process.execSync(`${this.settings.clientBinary || 'provenanced'} ${ProvenanceCommand.Query} ${QueryCommand.Marker} ${MarkerQueryCommand.List} --home ${this.settings.homeDir} ${this.settings.testNet ? ProvenanceClientFlags.TestNet : ''} -o json`);
+			const marker_objs: Marker[] = JSON.parse(listedMarkers.toString()).markers;
+			marker_objs.forEach((marker_obj) => {
+				var marker: Marker = {
+					base_account: marker_obj.base_account,
+					manager: marker_obj.manager,
+					access_control: marker_obj.access_control,
+					status: marker_obj.status,
+					denom: marker_obj.denom,
+					supply: Number(marker_obj.supply),
+					marker_type: marker_obj.marker_type,
+					supply_fixed: marker_obj.supply_fixed,
+					allow_governance_control: marker_obj.allow_governance_control
+				};
+				provMarkers.push(marker);
+			});
+
+			resolve(provMarkers);
+		});
+	}
+
 	doesMarkerExist(denom: string): boolean {
 		let exists: boolean = false;
 
@@ -524,6 +600,18 @@ export class Provenance {
 		}
 
 		return exists;
+	}
+
+	getMarkerAddress(denom: string): string {
+		var marker_addr: string = '';
+
+		const marker_info = child_process.execSync(`${this.settings.clientBinary || 'provenanced'} ${ProvenanceCommand.Query} ${QueryCommand.Marker} ${MarkerQueryCommand.Get} ${denom} --home ${this.settings.homeDir} ${this.settings.testNet ? ProvenanceClientFlags.TestNet : ''} -o json`);
+		if (!marker_info.toString().includes("invalid marker denom")) {
+			const marker_obj: Marker = JSON.parse(marker_info.toString()).marker;
+			marker_addr = marker_obj.base_account.address;
+		}
+
+		return marker_addr;
 	}
 
 	getLatestCodeIdByContractLabel(label: string): Promise<number> {
@@ -663,11 +751,37 @@ export class Provenance {
 			const HD_PATH = `"44'/1'/0'/0/0"`;
 
 			try {
-				const key = child_process.execSync(`${this.settings.clientBinary || 'provenanced'} ${ProvenanceCommand.Keys} ${KeysCommand.Add} ${name} --hd-path ${HD_PATH} --home ${this.settings.homeDir} ${this.settings.testNet ? ProvenanceClientFlags.TestNet : ''}`);
-				var newKey = new ProvenanceKey(key.toString().replace('- ', '').trim().split(/[\r\n]+/));
-				resolve(newKey);
+				child_process.exec(`${this.settings.clientBinary || 'provenanced'} ${ProvenanceCommand.Keys} ${KeysCommand.Add} ${name} --hd-path ${HD_PATH} --home ${this.settings.homeDir} ${this.settings.testNet ? ProvenanceClientFlags.TestNet : ''}`, (err, stdout, stderr) => {
+					var newKey = new ProvenanceKey(stdout.replace('- ', '').trim().split(/[\r\n]+/));
+					var mnemonic = '';
+					stderr.split(/[\r\n]+/).forEach((line) => {
+						if (line.length > 0) {
+							mnemonic = line;
+						}
+					});
+					newKey.mnemonic = mnemonic
+					resolve(newKey);
+				});
 			} catch (err) {
 				reject(new Error(`Failed to create key ${name}`));
+			}
+		});
+	}
+
+	recoverKey(name: string, mnemonic: string): Promise<Key> {
+		return new Promise<Key>((resolve, reject) => {
+			// reload the settings
+			this.loadSettings();
+
+			const HD_PATH = `"44'/1'/0'/0/0"`;
+
+			try {
+				child_process.exec(`echo "${mnemonic}" | ${this.settings.clientBinary || 'provenanced'} ${ProvenanceCommand.Keys} ${KeysCommand.Add} ${name} --hd-path ${HD_PATH} --recover --home ${this.settings.homeDir} ${this.settings.testNet ? ProvenanceClientFlags.TestNet : ''}`, (err, stdout, stderr) => {
+					var recoveredKey = new ProvenanceKey(stdout.replace('- ', '').trim().split(/[\r\n]+/));
+					resolve(recoveredKey);
+				});
+			} catch (err) {
+				reject(new Error(`Failed to recover key ${name}`));
 			}
 		});
 	}
@@ -715,22 +829,22 @@ export class Provenance {
 		return promise;
 	}
 
-	grantMarkerPriv(denom: string, manager: string, priv: MarkerAccess): Promise<void> {
+	grantMarkerPriv(denom: string, key: string, priv: MarkerAccess): Promise<void> {
 		// reload the settings
 		this.loadSettings();
 
-		const manager_key = this.getAddressForKey(manager);
+		const key_addr = this.getAddressForKey(key);
 
 		// use the manager signing key
 		var overrides: {[k: string]: any} = {};
-		overrides[ProvenanceClientFlags.From] = manager;
+		overrides[ProvenanceClientFlags.From] = key_addr;
 
 		// build the command
 		const command = this.buildCommand([
 			ProvenanceCommand.TX, 
 			TransactionCommand.Marker, 
 			MarkerTransactionCommand.Grant, 
-			manager_key,
+			key_addr,
 			denom,
 			priv.toString()
 		], overrides, {}, true);
@@ -761,10 +875,10 @@ export class Provenance {
 		return promise;
 	}
 
-	grantMarkerPrivs(denom: string, manager: string, privs: MarkerAccess[]): Promise<void> {
+	grantMarkerPrivs(denom: string, key: string, privs: MarkerAccess[]): Promise<void> {
 		return new Promise<void>((resolve, reject) => {
-			async.eachSeries(privs, (priv, callback) => {
-				this.grantMarkerPriv(denom, manager, priv).then(() => {
+			async.eachSeries(privs, (priv: MarkerAccess, callback) => {
+				this.grantMarkerPriv(denom, key, priv).then(() => {
 					callback();
 				}).catch((err) => {
 					callback(err);
@@ -863,7 +977,7 @@ export class Provenance {
 		return promise;
 	}
 
-	createMarker(denom: string, supply: number, manager: string, privs: MarkerAccess[]): Promise<Marker> {
+	createMarker(denom: string, supply: number, manager: string, grants: ProvenanceMarkerGrant[]): Promise<Marker> {
 		return new Promise<Marker>((resolve, reject) => {
 			async.series([
 				(callback) => {
@@ -874,9 +988,13 @@ export class Provenance {
 					});
 				},
 				(callback) => {
-					this.grantMarkerPrivs(denom, manager, privs).then(() => {
-						callback();
-					}).catch((err) => {
+					async.eachSeries(grants, (grant: ProvenanceMarkerGrant, series_callback) => {
+						this.grantMarkerPrivs(denom, grant.key, grant.privs).then(() => {
+							series_callback();
+						}).catch((err) => {
+							series_callback(err);
+						});
+					}, (err) => {
 						callback(err);
 					});
 				},
@@ -909,25 +1027,48 @@ export class Provenance {
 		});
 	}
 
-	withdrawCoin(denom: string, amount: number, manager: string, recipient: string): Promise<void> {
-		return new Promise<void>((resolve, reject) => {
-			// TODO
-		});
+	withdrawCoin(denom: string, amount: number, sender: (string | undefined), recipient: string): Promise<void> {
+		// reload the settings
+		this.loadSettings();
 
-		/*
-			./build/provenanced tx marker withdraw \
-				test.omni.usd \
-				1000000000test.omni.usd \
-				$(./build/provenanced keys show -a warehouse --testnet --home  /Users/koryherzinger/.provenance/build/node0) \   	<<< RECIPIENT
-				--from omnibus \   																									<<< MANAGER
-				--chain-id chain-local \
-				--gas auto \
-				--fees 2000nhash \
-				--broadcast-mode block \
-				--testnet \
-				--home /Users/koryherzinger/.provenance/build/node0 \
-				--yes
-		*/
+		// use the sender signing key
+		var overrides: {[k: string]: any} = {};
+		if (sender) {
+			overrides[ProvenanceClientFlags.From] = sender;
+		}
+
+		// build the command
+		const command = this.buildCommand([
+			ProvenanceCommand.TX, 
+			TransactionCommand.Marker, 
+			MarkerTransactionCommand.Withdraw, 
+			denom,
+			`${amount}${denom}`,
+			this.getAddressForKey(recipient)
+		], overrides, {}, true);
+
+		return new Promise<void>((resolve, reject) => {
+			let coin_withdrawn = false;
+			Utils.runCommand(command, (out: string) => {
+				var result = JSON.parse(out);
+	
+				result.logs.forEach((log: ProvenanceLog) => {
+					log.events.forEach((event: ProvenanceLogEvent) => {
+						if (event.type == 'provenance.marker.v1.EventMarkerWithdraw') {
+							coin_withdrawn = true;
+						}
+					});
+				});
+			}).then (() => {
+				if (coin_withdrawn) {
+					resolve();
+				} else {
+					reject(new Error(`Failed to withdraw coin ${denom} to ${recipient}`));
+				}
+			}).catch((err) => {
+				reject(new Error(`Failed to withdraw coin ${denom} to ${recipient}`));
+			});
+		});
 	}
 
 	recoverKeyFromMnemonic(name: string, mnemonic: string): Promise<Key> {

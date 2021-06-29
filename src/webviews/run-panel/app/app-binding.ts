@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { v4 as uuidv4 } from 'uuid';
 import { BehaviorSubject, Observable } from 'rxjs';
 
+import { ProvenanceMarker } from './provenance-marker';
 import { SigningKey } from './signing-key';
 import { SmartContractFunction } from './smart-contract-function';
 import { EmptySmartContractInfo, SmartContractInfo } from './smart-contract-info';
@@ -40,7 +41,8 @@ export enum DataBinding {
     ContractInfo = 'contractInfo',
     ExecuteFunctions = 'executeFunctions',
     QueryFunctions = 'queryFunctions',
-    SigningKeys = "signingKeys"
+    SigningKeys = "signingKeys",
+    Markers = "markers"
 }
 
 export interface AlertEvent extends EventData {
@@ -61,11 +63,17 @@ export enum ExecuteFunctionResult {
     Error = 'error',
 }
 
+export interface ExecuteFunctionCoin {
+    amount: number,
+    denom: string
+}
+
 export interface ExecuteFunctionRequestEvent extends EventData {
     id: string,
     func: SmartContractFunction,
     args: any,
-    key: (string | undefined)
+    key: (string | undefined),
+    coin: (ExecuteFunctionCoin | undefined)
 }
 
 export interface ExecuteFunctionResponseEvent extends EventData {
@@ -103,6 +111,7 @@ export class RunViewAppBinding {
 
     private _contractInfo: BehaviorSubject<SmartContractInfo> = new BehaviorSubject<SmartContractInfo>(EmptySmartContractInfo);
     private _signingKeys: BehaviorSubject<SigningKey[]> = new BehaviorSubject<SigningKey[]>([]);
+    private _markers: BehaviorSubject<ProvenanceMarker[]> = new BehaviorSubject<ProvenanceMarker[]>([]);
     private _executeFunctions: BehaviorSubject<SmartContractFunction[]> = new BehaviorSubject<SmartContractFunction[]>([]);
     private _queryFunctions: BehaviorSubject<SmartContractFunction[]> = new BehaviorSubject<SmartContractFunction[]>([]);
     private _alerts: BehaviorSubject<AlertEvent[]> = new BehaviorSubject<AlertEvent[]>([]);
@@ -135,7 +144,7 @@ export class RunViewAppBinding {
                 const execFuncReq = event.data as ExecuteFunctionRequestEvent;
                 console.log(`Received request ${execFuncReq.id} to execute function ${execFuncReq.func.name} as ${execFuncReq.key}`);
                 if (this.onExecuteRequestHandler) {
-                    this.onExecuteRequestHandler(execFuncReq.func, execFuncReq.args, execFuncReq.key, (result: any) => {
+                    this.onExecuteRequestHandler(execFuncReq.func, execFuncReq.args, execFuncReq.key, execFuncReq.coin, (result: any) => {
                         this.postExecuteFunctionResponseEvent(execFuncReq.id, ExecuteFunctionResult.Success, result, undefined);
                     }, (err: Error) => {
                         this.postExecuteFunctionResponseEvent(execFuncReq.id, ExecuteFunctionResult.Error, undefined, err);
@@ -166,7 +175,9 @@ export class RunViewAppBinding {
                     this._contractInfo.next(dataChangeEvent.value);
                 } else if(dataChangeEvent.name == DataBinding.SigningKeys) {
                     this._signingKeys.next(dataChangeEvent.value);
-                } else if (dataChangeEvent.name == DataBinding.ExecuteFunctions) {
+                } else if(dataChangeEvent.name == DataBinding.Markers) {
+                    this._markers.next(dataChangeEvent.value);
+                }else if (dataChangeEvent.name == DataBinding.ExecuteFunctions) {
                     this._executeFunctions.next(dataChangeEvent.value);
                 } else if (dataChangeEvent.name == DataBinding.QueryFunctions) {
                     this._queryFunctions.next(dataChangeEvent.value);
@@ -270,10 +281,17 @@ export class RunViewAppBinding {
     public get signingKeys(): SigningKey[] { return this._signingKeys.value }
     public get signingKeysObservable(): Observable<SigningKey[]> { return this._signingKeys }
 
-    onExecuteRequest(handler: ((func: SmartContractFunction, args: any, key: (string | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => void)) {
+    public set markers(markers: ProvenanceMarker[]) {
+        this._markers.next(markers);
+        this.postDataChangeEvent(DataBinding.Markers, this._markers.value);
+    }
+    public get markers(): ProvenanceMarker[] { return this._markers.value }
+    public get markersObservable(): Observable<ProvenanceMarker[]> { return this._markers }
+
+    onExecuteRequest(handler: ((func: SmartContractFunction, args: any, key: (string | undefined), coin: (ExecuteFunctionCoin | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => void)) {
         this.onExecuteRequestHandler = handler;
     }
-    private onExecuteRequestHandler: ((func: SmartContractFunction, args: any, key: (string | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+    private onExecuteRequestHandler: ((func: SmartContractFunction, args: any, key: (string | undefined), coin: (ExecuteFunctionCoin | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
 
     public set executeFunctions(funcs: SmartContractFunction[]) {
         this._executeFunctions.next(funcs);
@@ -304,7 +322,40 @@ export class RunViewAppBinding {
                     id: uuidv4(),
                     func: func,
                     args: args,
-                    key: undefined
+                    key: undefined,
+                    coin: undefined
+                };
+                const execFuncReqMessage: Event = {
+                    command: Command.ExecuteFunctionRequest,
+                    data: execFuncReqData
+                };
+                this.registerResponse(execFuncReqData.id, (eventData: EventData) => {
+                    const execFuncResMessage = eventData as ExecuteFunctionResponseEvent;
+                    if (execFuncResMessage.result == ExecuteFunctionResult.Success) {
+                        resolve(execFuncResMessage.data);
+                    } else {
+                        reject(execFuncResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(execFuncReqMessage);
+            } else {
+                reject(new Error('Cannot execute functions from VSCode'));
+            }
+        });
+    }
+
+    public executeFunctionWithCoin(func: SmartContractFunction, args: any, amount: number, denom: string): Promise<any> {
+        return new Promise<any>((resolve, reject) => {
+            if (this._vscode) {
+                const execFuncReqData: ExecuteFunctionRequestEvent = {
+                    id: uuidv4(),
+                    func: func,
+                    args: args,
+                    key: undefined,
+                    coin: {
+                        amount: amount,
+                        denom: denom
+                    }
                 };
                 const execFuncReqMessage: Event = {
                     command: Command.ExecuteFunctionRequest,
@@ -332,7 +383,40 @@ export class RunViewAppBinding {
                     id: uuidv4(),
                     func: func,
                     args: args,
-                    key: signingKey
+                    key: signingKey,
+                    coin: undefined
+                };
+                const execFuncReqMessage: Event = {
+                    command: Command.ExecuteFunctionRequest,
+                    data: execFuncReqData
+                };
+                this.registerResponse(execFuncReqData.id, (eventData: EventData) => {
+                    const execFuncResMessage = eventData as ExecuteFunctionResponseEvent;
+                    if (execFuncResMessage.result == ExecuteFunctionResult.Success) {
+                        resolve(execFuncResMessage.data);
+                    } else {
+                        reject(execFuncResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(execFuncReqMessage);
+            } else {
+                reject(new Error('Cannot execute functions from VSCode'));
+            }
+        });
+    }
+
+    public executeFunctionAsWithCoin(func: SmartContractFunction, args: any, signingKey: string, amount: number, denom: string): Promise<any> {
+        return new Promise<any>((resolve, reject) => {
+            if (this._vscode) {
+                const execFuncReqData: ExecuteFunctionRequestEvent = {
+                    id: uuidv4(),
+                    func: func,
+                    args: args,
+                    key: signingKey,
+                    coin: {
+                        amount: amount,
+                        denom: denom
+                    }
                 };
                 const execFuncReqMessage: Event = {
                     command: Command.ExecuteFunctionRequest,

@@ -2,12 +2,14 @@ import * as React from "react";
 import './app.scss';
 
 import { Alert, Col, Container, Nav, Row, Tab } from 'react-bootstrap';
+import { ProvenanceMarker } from './provenance-marker';
 import { SigningKey } from './signing-key';
 import { SmartContractFunction } from './smart-contract-function';
 import { SmartContractInfo } from './smart-contract-info';
 import { AlertEvent, RunViewAppBinding, Event, Command } from './app-binding';
 
 import SmartContractInfoView from './smart-contract-info-view';
+import SmartContractInstantiateView from './smart-contract-instantiate-view';
 import SmartContractFunctionView from './smart-contract-function-view';
 
 declare global {
@@ -26,6 +28,7 @@ interface AppState {
     executeFunctions: SmartContractFunction[],
     queryFunctions: SmartContractFunction[],
     signingKeys: SigningKey[],
+    markers: ProvenanceMarker[],
     alerts: AlertEvent[],
     activeKey: string
 }
@@ -55,6 +58,7 @@ export class App extends React.Component<AppProps, AppState> {
             executeFunctions: this.appBinding.executeFunctions,
             queryFunctions: this.appBinding.queryFunctions,
             signingKeys: this.appBinding.signingKeys,
+            markers: this.appBinding.markers,
             alerts: [],
             activeKey: ''
         }
@@ -68,6 +72,12 @@ export class App extends React.Component<AppProps, AppState> {
         this.appBinding.signingKeysObservable.subscribe((signingKeys) => {
             this.setState({
                 signingKeys: signingKeys
+            });
+        });
+
+        this.appBinding.markersObservable.subscribe((markers) => {
+            this.setState({
+                markers: markers
             });
         });
 
@@ -124,6 +134,12 @@ export class App extends React.Component<AppProps, AppState> {
 					<Row>
 						<Col sm={3}>
 							<Nav variant="pills" className="flex-column">
+                                {!this.state.contractInfo.isSingleton && <Nav.Item>
+                                    <Nav.Link disabled>Instantiate</Nav.Link>
+                                </Nav.Item>}
+                                {!this.state.contractInfo.isSingleton && <Nav.Item>
+                                    <Nav.Link eventKey="instantiate" active={isActiveKey("instantiate")}>Instantiate Contract</Nav.Link>
+                                </Nav.Item>}
 								<Nav.Item><Nav.Link disabled>Execute</Nav.Link></Nav.Item>
                                 {this.state.executeFunctions.map((func, idx) =>
                                     <Nav.Item>
@@ -141,14 +157,17 @@ export class App extends React.Component<AppProps, AppState> {
 						</Col>
 						<Col sm={9}>
 							<Tab.Content>
+                                {!this.state.contractInfo.isSingleton && <Tab.Pane eventKey="instantiate" active={isActiveKey("instantiate")}>
+                                    <SmartContractInstantiateView contractInfo={this.state.contractInfo} signingKeys={this.state.signingKeys}></SmartContractInstantiateView>
+                                </Tab.Pane>}
                                 {this.state.executeFunctions.map((func, idx) =>
                                     <Tab.Pane eventKey={func.name} active={isActiveKey(func.name)}>
-                                        <SmartContractFunctionView function={func} index={idx} signingKeys={this.state.signingKeys}></SmartContractFunctionView>
+                                        <SmartContractFunctionView function={func} index={idx} signingKeys={this.state.signingKeys} markers={this.state.markers}></SmartContractFunctionView>
                                     </Tab.Pane>
                                 )}
                                 {this.state.queryFunctions.map((func, idx) =>
                                     <Tab.Pane eventKey={func.name} active={isActiveKey(func.name)}>
-                                        <SmartContractFunctionView function={func} index={idx} signingKeys={this.state.signingKeys}></SmartContractFunctionView>
+                                        <SmartContractFunctionView function={func} index={idx} signingKeys={[]} markers={[]}></SmartContractFunctionView>
                                     </Tab.Pane>
                                 )}
 							</Tab.Content>
@@ -163,7 +182,7 @@ export class App extends React.Component<AppProps, AppState> {
                                     <Col>
                                         <Alert variant={alert.type} dismissible={alert.dismissable} onClose={() => {clearAlert(alert.id)}}>
                                             <Alert.Heading>{alert.title}</Alert.Heading>
-                                            <p>{alert.body}</p>
+                                            <div className="alertBody">{alert.body}</div>
                                         </Alert>
                                     </Col>
                                 </Row>

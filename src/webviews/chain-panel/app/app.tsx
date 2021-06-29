@@ -1,9 +1,10 @@
 import * as React from "react";
 import './app.scss';
 
-import { Container, Nav, Navbar } from 'react-bootstrap';
+import { Alert, Col, Container, Nav, Navbar, Row } from 'react-bootstrap';
 import { ProvenanceKey } from './provenance-key';
-import { ChainViewAppBinding, Command, Event } from './app-binding';
+import { ProvenanceMarker } from './provenance-marker';
+import { AlertEvent, ChainViewAppBinding, Command, Event } from './app-binding';
 
 import ProvenanceAccountsView from './provenance-accounts-view';
 import ProvenanceBankView from './provenance-bank-view';
@@ -26,7 +27,9 @@ interface AppProps {
 
 interface AppState {
     keys: ProvenanceKey[],
-    activeView: string
+    markers: ProvenanceMarker[],
+    activeView: string,
+    alerts: AlertEvent[]
 }
 
 export class App extends React.Component<AppProps, AppState> {
@@ -38,7 +41,9 @@ export class App extends React.Component<AppProps, AppState> {
 
         this.state = {
             keys: this.appBinding.keys,
-            activeView: ACCOUNTS_VIEW
+            markers: this.appBinding.markers,
+            activeView: ACCOUNTS_VIEW,
+            alerts: []
         };
 
         this.appBinding.keysObservable.subscribe((keys) => {
@@ -47,7 +52,17 @@ export class App extends React.Component<AppProps, AppState> {
             });
         });
 
-        // TODO
+        this.appBinding.markersObservable.subscribe((markers) => {
+            this.setState({
+                markers: markers
+            });
+        });
+
+        this.appBinding.alertsObservable.subscribe((alerts) => {
+            this.setState({
+                alerts: alerts
+            });
+        });
 
         window.addEventListener('message', (event) => {
             this.appBinding.eventListener(event);
@@ -64,6 +79,11 @@ export class App extends React.Component<AppProps, AppState> {
     render() {
         const setActiveView = (v) => {
             this.setState({ activeView: v });
+        };
+
+        const clearAlert = (id) => {
+            console.log(`Close alert ${id}`);
+            this.appBinding.clearAlert(id);
         };
 
         return (
@@ -86,7 +106,19 @@ export class App extends React.Component<AppProps, AppState> {
                 <Container className="rootContainer" fluid>
                     {this.state.activeView == ACCOUNTS_VIEW && <ProvenanceAccountsView appBinding={this.appBinding} accountKeys={this.state.keys}></ProvenanceAccountsView>}
                     {this.state.activeView == BANK_VIEW && <ProvenanceBankView></ProvenanceBankView>}
-                    {this.state.activeView == MARKERS_VIEW && <ProvenanceMarkersView></ProvenanceMarkersView>}
+                    {this.state.activeView == MARKERS_VIEW && <ProvenanceMarkersView appBinding={this.appBinding} markers={this.state.markers}></ProvenanceMarkersView>}
+                </Container>
+                <Container className="alertContainer" style={{maxWidth: "initial"}}>
+                    {this.state.alerts.map((alert, idx) => 
+                        <Row>
+                            <Col>
+                                <Alert variant={alert.type} dismissible={alert.dismissable} onClose={() => {clearAlert(alert.id)}}>
+                                    <Alert.Heading>{alert.title}</Alert.Heading>
+                                    <div className="alertBody">{alert.body}</div>
+                                </Alert>
+                            </Col>
+                        </Row>
+                    )}
                 </Container>
             </Container>
         );

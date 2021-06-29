@@ -6,12 +6,7 @@ import SimpleGit, { RemoteWithRefs } from 'simple-git';
 
 import { ProvenanceConfig } from './ProvenanceClient'
 
-import { SmartContractFunction, SmartContractFunctionProperty, SmartContractFunctionType } from './webviews/run-panel/app/smart-contract-function';
-
-export interface SmartContractFunctions {
-    executeFunctions: SmartContractFunction[],
-    queryFunctions: SmartContractFunction[]
-}
+import { SmartContractFunction, SmartContractFunctionProperty, SmartContractFunctionType, SmartContractFunctions } from './webviews/run-panel/app/smart-contract-function';
 
 class JSONSchemaSmartContractFunctionProperty implements SmartContractFunctionProperty {
     name: string = '';

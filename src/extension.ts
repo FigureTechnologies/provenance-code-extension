@@ -1,16 +1,19 @@
 import * as vscode from 'vscode';
 import * as glob from 'glob';
+import * as async from 'async';
 
-import { Utils, SmartContractFunctions } from './utils';
-import { Key, Marker, Provenance, ProvenanceConfig, ProvenanceMarkerConfig } from './ProvenanceClient'
+import { Utils } from './utils';
+import { Key, Marker, Provenance, ProvenanceConfig, ProvenanceKeyConfig, ProvenanceMarkerConfig } from './ProvenanceClient'
 
 import { ChainViewAppBinding } from './webviews/chain-panel/app/app-binding';
 import { ChainPanelViewLoader } from './webviews/chain-panel/ChainPanelViewLoader';
+import { ChainPanelViewUpdater } from './webviews/chain-panel/ChainPanelViewUpdater';
 
-import { Alert, RunViewAppBinding } from './webviews/run-panel/app/app-binding';
+import { ExecuteFunctionCoin, RunViewAppBinding } from './webviews/run-panel/app/app-binding';
 import { RunPanelViewLoader } from './webviews/run-panel/RunPanelViewLoader';
+import { RunPanelViewUpdater } from './webviews/run-panel/RunPanelViewUpdater';
 
-import { SmartContractFunction } from './webviews/run-panel/app/smart-contract-function';
+import { SmartContractFunction, SmartContractFunctions } from './webviews/run-panel/app/smart-contract-function';
 import { ProvenanceAccountBalance } from './webviews/chain-panel/app/provenance-account-balance';
 import { ProvenanceKey } from './webviews/chain-panel/app/provenance-key';
 
@@ -20,9 +23,11 @@ let isBusy: boolean = false;
 
 let chainPanelView: ChainPanelViewLoader;
 let chainViewApp: ChainViewAppBinding;
+ChainPanelViewUpdater.provenance = provenance;
 
 let runPanelView: RunPanelViewLoader;
 let runViewApp: RunViewAppBinding;
+RunPanelViewUpdater.provenance = provenance;
 
 const buildWasmCommand = 'provenance.build';
 const chainUtilsCommand = 'provenance.chain-utils';
@@ -85,13 +90,13 @@ function storeWasm(): Promise<number> {
 	});
 }
 
-async function ensureKeysExist(keys: string[]): Promise<void> {
+async function ensureKeysExist(keys: ProvenanceKeyConfig[]): Promise<void> {
 	return new Promise<void>((resolve, reject) => {
 		var createKeys: Promise<Key>[] = [];
 
 		keys.forEach((key) => {
-			if (!provenance.doesKeyExist(key)) {
-				createKeys.push(provenance.createKey(key));
+			if (!provenance.doesKeyExist(key.name)) {
+				createKeys.push(provenance.createKey(key.name));
 			}
 		});
 
@@ -106,6 +111,58 @@ async function ensureKeysExist(keys: string[]): Promise<void> {
 	});
 }
 
+async function ensureKeysHaveHash(keys: ProvenanceKeyConfig[]): Promise<void> {
+	return new Promise<void>((resolve, reject) => {
+		var fundAccounts: any[] = [];
+
+		async.eachSeries(keys, (key, callback) => {
+			console.log(`Checking if ${key.name} has hash...`);
+
+			var needs_hash = true;
+			var withdraw_amount = key.initialHash;
+
+			provenance.getAccountBalances(provenance.getAddressForKey(key.name)).then((holdings) => {
+				holdings.forEach((holding) => {
+					if (holding.denom == 'nhash') {
+						if (holding.amount >= key.minHash) {
+							needs_hash = false;
+						} else if (holding.amount > 0) {
+							withdraw_amount = key.minHash - holding.amount;
+						}
+					}
+				});
+				if (needs_hash) {
+					fundAccounts.push({
+						key: key.name,
+						amount: withdraw_amount
+					});
+				}
+				callback();
+			}).catch((err) => {
+				callback(err);
+			});
+		}, (err) => {
+			if (err) {
+				reject(err);
+			} else {
+				async.eachSeries(fundAccounts, (fundAccount, callback) => {
+					provenance.withdrawCoin('nhash', fundAccount.amount, undefined, fundAccount.key).then(() => {
+						callback();
+					}).catch((err) => {
+						callback(err);
+					});
+				}, (err) => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
+			}
+		});
+	});
+}
+
 async function ensureMarkersExist(markers: ProvenanceMarkerConfig[]): Promise<void> {
 	return new Promise<void>((resolve, reject) => {
 		var createMarkers: Promise<Marker>[] = [];
@@ -114,7 +171,7 @@ async function ensureMarkersExist(markers: ProvenanceMarkerConfig[]): Promise<vo
 			console.log(`Checking if marker exists: ${marker.denom}`);
 			if (!provenance.doesMarkerExist(marker.denom)) {
 				console.log(`Marker does not exist: ${marker.denom}`);
-				createMarkers.push(provenance.createMarker(marker.denom, marker.supply, marker.manager, marker.privs));
+				createMarkers.push(provenance.createMarker(marker.denom, marker.supply, marker.manager, marker.grants));
 			} else {
 				console.log(`Marker exists: ${marker.denom}`);
 			}
@@ -145,6 +202,9 @@ async function resolveArg(arg: string): Promise<any> {
 			if (func == 'getAddressForKey') {
 				// TODO: ensure # args is correct
 				resolve(provenance.getAddressForKey(args[0]));
+			} else if (func == 'getMarkerAddress') {
+				// TODO: ensure # args is correct
+				resolve(provenance.getMarkerAddress(args[0]));
 			} else {
 				reject(new Error(`Unknown function ${func} in namespace ${ns}`));
 			}
@@ -199,6 +259,7 @@ function instantiateOrMigrateWasm(codeId: number): Promise<void> {
 			if (config.env && config.env.keys && config.env.keys.length > 0) {
 				try {
 					await ensureKeysExist(config.env.keys);
+					await ensureKeysHaveHash(config.env.keys);
 				} catch (err) {
 					return reject(err);
 				}
@@ -340,18 +401,23 @@ export function activate(context: vscode.ExtensionContext) {
 
 	let chainUtils = vscode.commands.registerCommand(chainUtilsCommand, () => {
 		chainViewApp = ChainViewAppBinding.getCodeInstance(chainPanelView.showView(`Provenance: Blockchain Utils`));
+		ChainPanelViewUpdater.chainViewApp = chainViewApp;
 		chainPanelView.onDispose(() => {
 			console.log('chainPanelView.onDispose');
 			chainViewApp.unready();
 		});
 		chainPanelView.onDidChangeViewState(() => {
 			console.log('chainPanelView.onDidChangeViewState');
-			updateChainView();
+			Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+				ChainPanelViewUpdater.update(config);
+			});
 		});
 
 		chainViewApp.waitForReady().then(() => {
 			console.log('Chain view ready!');
-			updateChainView();
+			Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+				ChainPanelViewUpdater.update(config);
+			});
 
 			// hook up execute function request handler
 			chainViewApp.onGetAccountBalancesRequest((address: string, resolve: ((result: ProvenanceAccountBalance[]) => void), reject: ((err: Error) => void)) => {
@@ -369,6 +435,23 @@ export function activate(context: vscode.ExtensionContext) {
 				console.log('onCreateKeyRequest');
 
 				provenance.createKey(name).then((result) => {
+					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Keys);
+					});
+					resolve(result);
+				}).catch((err: Error) => {
+					vscode.window.showErrorMessage(err.message);
+					reject(err);
+				});
+			});
+
+			chainViewApp.onRecoverKeyRequest((name: string, mnemonic: string, resolve: ((result: ProvenanceKey) => void), reject: ((err: Error) => void)) => {
+				console.log('onRecoverKeyRequest');
+
+				provenance.recoverKey(name, mnemonic).then((result) => {
+					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Keys);
+					});
 					resolve(result);
 				}).catch((err: Error) => {
 					vscode.window.showErrorMessage(err.message);
@@ -408,29 +491,51 @@ export function activate(context: vscode.ExtensionContext) {
 	let run = vscode.commands.registerCommand(runWasmCommand, () => {
 		Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
 			runViewApp = RunViewAppBinding.getCodeInstance(runPanelView.showView(`Provenance: ${config.contractLabel}`));
+			RunPanelViewUpdater.runViewApp = runViewApp;
 			runPanelView.onDispose(() => {
 				console.log('runPanelView.onDispose');
 				runViewApp.unready();
 			});
 			runPanelView.onDidChangeViewState(() => {
 				console.log('runPanelView.onDidChangeViewState');
-				updateRunView(config);
+				Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+					Utils.loadContractFunctions().then((funcs: SmartContractFunctions) => {
+						RunPanelViewUpdater.functions = funcs;
+						RunPanelViewUpdater.update(config);
+					}).catch((err) => {
+						vscode.window.showErrorMessage(err.message);
+					});
+				});
 			});
 
 			runViewApp.waitForReady().then(() => {
 				console.log('Run view ready!');
-				updateRunView(config);
+				Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+					Utils.loadContractFunctions().then((funcs: SmartContractFunctions) => {
+						RunPanelViewUpdater.functions = funcs;
+						RunPanelViewUpdater.update(config);
+					}).catch((err) => {
+						vscode.window.showErrorMessage(err.message);
+					});
+				});
 
 				// hook up execute function request handler
-				runViewApp.onExecuteRequest((func: SmartContractFunction, args: any, key: (string | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => {
+				runViewApp.onExecuteRequest((func: SmartContractFunction, args: any, key: (string | undefined), coin: (ExecuteFunctionCoin | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => {
 					console.log('onExecuteRequest');
+					console.dir(coin);
 					
 					var execMsg: {[k: string]: any} = {};
 					execMsg[func.name] = args;
 
 					Utils.loadProvenanceConfig().then((config) => {
 						provenance.getContractByContractLabel(config.contractLabel).then((contract) => {
-							provenance.execute(contract, execMsg, key).then((result: any) => {
+							var execute_promise;
+							if (coin) {
+								execute_promise = provenance.executeWithCoin(contract, execMsg, key, coin.amount, coin.denom);
+							} else {
+								execute_promise = provenance.execute(contract, execMsg, key);
+							}
+							execute_promise.then((result: any) => {
 								resolve(result);
 							}).catch((err) => {
 								vscode.window.showErrorMessage(err.message);
@@ -557,6 +662,7 @@ function updateStatusBar(): void {
 	rightStatusBarSepItem.show();
 }
 
+/*
 function updateRunView(config: ProvenanceConfig): void {
 	if(runViewApp.isReady) {
 		// hide all alerts first
@@ -568,14 +674,26 @@ function updateRunView(config: ProvenanceConfig): void {
 			runViewApp.contractInfo = {
 				name: config.contractLabel,
 				address: contract.address,
-				codeId: contract.contract_info.code_id
+				codeId: contract.contract_info.code_id,
+				isSingleton: config.isSingleton,
+				initFunction: {
+					name: 'instantiate',
+					type: SmartContractFunctionType.Instantiate,
+					properties: [] // TODO: Build props from config.initArgs
+				}
 			};
 		}).catch((err) => {
 			console.log('Contract not found...');
 			runViewApp.contractInfo = {
 				name: config.contractLabel,
 				address: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-				codeId: 0
+				codeId: 0,
+				isSingleton: true,
+				initFunction: {
+					name: 'instantiate',
+					type: SmartContractFunctionType.Instantiate,
+					properties: []
+				}
 			};
 
 			runViewApp.showAlert(Alert.Danger, 'Contract not found!', 'Before you can execute the contract, you must first build, store and instantiate it on the Provenance blockchain.', false);
@@ -585,6 +703,14 @@ function updateRunView(config: ProvenanceConfig): void {
 		provenance.getAllKeys().then((keys) => {
 			console.log('Setting keys...');
 			runViewApp.signingKeys = keys;
+		}).catch((err) => {
+			vscode.window.showErrorMessage(err.message);
+		});
+
+		// get markers
+		provenance.getAllMarkers().then((markers) => {
+			console.log('Setting markers...');
+			runViewApp.markers = markers;
 		}).catch((err) => {
 			vscode.window.showErrorMessage(err.message);
 		});
@@ -599,18 +725,7 @@ function updateRunView(config: ProvenanceConfig): void {
 		});
 	}
 }
-
-function updateChainView(): void {
-	if(chainViewApp.isReady) {
-		// get accounts/keys
-		provenance.getAllKeys().then((keys) => {
-			console.log('Setting keys...');
-			chainViewApp.keys = keys;
-		}).catch((err) => {
-			vscode.window.showErrorMessage(err.message);
-		});
-	}
-}
+*/
 
 // this method is called when your extension is deactivated
 export function deactivate() {}

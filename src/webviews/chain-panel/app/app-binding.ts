@@ -4,17 +4,33 @@ import { BehaviorSubject, Observable } from 'rxjs';
 
 import { ProvenanceAccountBalance } from './provenance-account-balance';
 import { ProvenanceKey } from './provenance-key';
+import { ProvenanceMarker } from './provenance-marker';
 
 export interface EventData {
+}
+
+export enum Alert {
+    Primary = 'primary',
+    Secondary = 'secondary',
+    Success = 'success',
+    Danger = 'danger',
+    Warning = 'warning',
+    Info = 'info',
+    Light = 'light',
+    Dark = 'dark',
 }
 
 export enum Command {
     Ready = 'ready',
     DataChange = 'data-change',
+    Alert = 'alert',
+    ClearAlerts = 'clear-alerts',
     GetAccountBalancesRequest = 'get-account-balances-request',
     GetAccountBalancesResponse = 'get-account-balances-response',
     CreateKeyRequest = "create-key-request",
-    CreateKeyResponse = "create-key-response"
+    CreateKeyResponse = "create-key-response",
+    RecoverKeyRequest = "recover-key-request",
+    RecoverKeyResponse = "recover-key-response"
 }
 
 export interface Event {
@@ -23,7 +39,16 @@ export interface Event {
 }
 
 export enum DataBinding {
-    Keys = 'keys'
+    Keys = 'keys',
+    Markers = 'markers'
+}
+
+export interface AlertEvent extends EventData {
+    id: string,
+    type: Alert,
+    title: string,
+    body: string,
+    dismissable: boolean
 }
 
 export interface DataChangeEvent extends EventData {
@@ -65,6 +90,24 @@ export interface CreateKeyResponseEvent extends EventData {
     error: Error
 }
 
+export enum RecoverKeyResult {
+    Success = 'success',
+    Error = 'error'
+}
+
+export interface RecoverKeyRequestEvent extends EventData {
+    id: string,
+    name: string,
+    mnemonic: string
+}
+
+export interface RecoverKeyResponseEvent extends EventData {
+    id: string,
+    result: RecoverKeyResult,
+    data: (ProvenanceKey | undefined),
+    error: Error
+}
+
 export class ChainViewAppBinding {
     private static instance: ChainViewAppBinding;
 
@@ -74,6 +117,8 @@ export class ChainViewAppBinding {
     public isReady: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(false);
 
     private _keys: BehaviorSubject<ProvenanceKey[]> = new BehaviorSubject<ProvenanceKey[]>([]);
+    private _markers: BehaviorSubject<ProvenanceMarker[]> = new BehaviorSubject<ProvenanceMarker[]>([]);
+    private _alerts: BehaviorSubject<AlertEvent[]> = new BehaviorSubject<AlertEvent[]>([]);
 
     private constructor() { }
 
@@ -105,6 +150,51 @@ export class ChainViewAppBinding {
                 });
             }
         });
+    }
+
+    public clearAlerts() {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.ClearAlerts,
+                data: undefined
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    public clearAlert(id: string) {
+        if (this._vscode) {
+            var newAlerts = this._alerts.value;
+            var idx = newAlerts.findIndex((alert) => {
+                return (alert.id == id);
+            });
+            if (idx >= 0) {
+                newAlerts.splice(idx, 1);
+            }
+            this._alerts.next(newAlerts);
+        }
+    }
+
+    public showAlert(type: Alert, title: string, body: string, dismissable: boolean) {
+        let event: Event = {
+            command: Command.Alert,
+            data: {
+                id: uuidv4(),
+                type: type,
+                title: title,
+                body: body,
+                dismissable: dismissable
+            }
+        };
+
+        if (this._webview) {
+            this._webview.postMessage(event);
+        } else if (this._vscode) {
+            const alertEvent: AlertEvent = event.data as AlertEvent;
+            var newAlerts = this._alerts.value;
+            newAlerts.push(alertEvent);
+            this._alerts.next(newAlerts);
+        }
     }
 
     private handleMessageFromReact(event: Event) {
@@ -141,6 +231,20 @@ export class ChainViewAppBinding {
                     this.postCreateKeyResponseEvent(createKeyReq.id, CreateKeyResult.Error, undefined, new Error('No request handler set.'));
                 }
             } break;
+
+            case Command.RecoverKeyRequest: {
+                const recoverKeyReq = event.data as RecoverKeyRequestEvent;
+                console.log(`Received request ${recoverKeyReq.id} to recover key ${recoverKeyReq.name} with mnemonic ${recoverKeyReq.mnemonic}`);
+                if (this.onRecoverKeyRequestHandler) {
+                    this.onRecoverKeyRequestHandler(recoverKeyReq.name, recoverKeyReq.mnemonic, (result: ProvenanceKey) => {
+                        this.postRecoverKeyResponseEvent(recoverKeyReq.id, RecoverKeyResult.Success, result, undefined);
+                    }, (err: Error) => {
+                        this.postRecoverKeyResponseEvent(recoverKeyReq.id, RecoverKeyResult.Error, undefined, err);
+                    });
+                } else {
+                    this.postRecoverKeyResponseEvent(recoverKeyReq.id, RecoverKeyResult.Error, undefined, new Error('No request handler set.'));
+                }
+            } break;
         }
     }
 
@@ -151,7 +255,20 @@ export class ChainViewAppBinding {
                 const dataChangeEvent: DataChangeEvent = event.data as DataChangeEvent;
                 if(dataChangeEvent.name == DataBinding.Keys) {
                     this._keys.next(dataChangeEvent.value);
+                } else if(dataChangeEvent.name == DataBinding.Markers) {
+                    this._markers.next(dataChangeEvent.value);
                 }
+            } break;
+
+            case Command.Alert: {
+                const alertEvent: AlertEvent = event.data as AlertEvent;
+                var newAlerts = this._alerts.value;
+                newAlerts.push(alertEvent);
+                this._alerts.next(newAlerts);
+            } break;
+
+            case Command.ClearAlerts: {
+                this._alerts.next([]);
             } break;
 
             case Command.GetAccountBalancesResponse: {
@@ -159,6 +276,22 @@ export class ChainViewAppBinding {
                 console.dir(getAccountBalancesResponseEvent);
                 if (getAccountBalancesResponseEvent.id in this.responseHandlers) {
                     this.responseHandlers[getAccountBalancesResponseEvent.id](getAccountBalancesResponseEvent);
+                }
+            } break;
+
+            case Command.CreateKeyResponse: {
+                const createKeyResponseEvent: CreateKeyResponseEvent = event.data as CreateKeyResponseEvent;
+                console.dir(createKeyResponseEvent);
+                if (createKeyResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[createKeyResponseEvent.id](createKeyResponseEvent);
+                }
+            } break;
+
+            case Command.RecoverKeyResponse: {
+                const recoverKeyResponseEvent: RecoverKeyResponseEvent = event.data as RecoverKeyResponseEvent;
+                console.dir(recoverKeyResponseEvent);
+                if (recoverKeyResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[recoverKeyResponseEvent.id](recoverKeyResponseEvent);
                 }
             } break;
         }
@@ -170,6 +303,16 @@ export class ChainViewAppBinding {
     }
     public get keys(): ProvenanceKey[] { return this._keys.value }
     public get keysObservable(): Observable<ProvenanceKey[]> { return this._keys }
+
+    public set markers(markers: ProvenanceMarker[]) {
+        this._markers.next(markers);
+        this.postDataChangeEvent(DataBinding.Markers, this._markers.value);
+    }
+    public get markers(): ProvenanceMarker[] { return this._markers.value }
+    public get markersObservable(): Observable<ProvenanceMarker[]> { return this._markers }
+
+    public get alerts(): AlertEvent[] { return this._alerts.value }
+    public get alertsObservable(): Observable<AlertEvent[]> { return this._alerts }
 
     onGetAccountBalancesRequest(handler: ((address: string, resolve: ((result: ProvenanceAccountBalance[]) => void), reject: ((err: Error) => void)) => void)) {
         this.onGetAccountBalancesRequestHandler = handler;
@@ -229,6 +372,38 @@ export class ChainViewAppBinding {
                 this._vscode.postMessage(createKeyReqMessage);
             } else {
                 reject(new Error('Cannot execute `createKey` from VSCode'));
+            }
+        });
+    }
+
+    onRecoverKeyRequest(handler: ((name: string, mnemonic: string, resolve: ((result: ProvenanceKey) => void), reject: ((err: Error) => void)) => void)) {
+        this.onRecoverKeyRequestHandler = handler;
+    }
+    private onRecoverKeyRequestHandler: ((name: string, mnemonic: string, resolve: ((result: ProvenanceKey) => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public recoverKey(name: string, mnemonic: string): Promise<(ProvenanceKey | undefined)> {
+        return new Promise<(ProvenanceKey | undefined)>((resolve, reject) => {
+            if (this._vscode) {
+                const recoverKeyReqData: RecoverKeyRequestEvent = {
+                    id: uuidv4(),
+                    name: name,
+                    mnemonic: mnemonic
+                };
+                const recoverKeyReqMessage: Event = {
+                    command: Command.RecoverKeyRequest,
+                    data: recoverKeyReqData
+                };
+                this.registerResponse(recoverKeyReqData.id, (eventData: EventData) => {
+                    const recoverKeyResMessage = eventData as RecoverKeyResponseEvent;
+                    if (recoverKeyResMessage.result == RecoverKeyResult.Success) {
+                        resolve(recoverKeyResMessage.data);
+                    } else {
+                        reject(recoverKeyResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(recoverKeyReqMessage);
+            } else {
+                reject(new Error('Cannot execute `recoverKey` from VSCode'));
             }
         });
     }
@@ -309,6 +484,21 @@ export class ChainViewAppBinding {
         if (this._webview) {
             let event: Event = {
                 command: Command.CreateKeyResponse,
+                data: {
+                    id: id,
+                    result: result,
+                    data: data,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postRecoverKeyResponseEvent(id: string, result: RecoverKeyResult, data: (ProvenanceKey | undefined), error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.RecoverKeyResponse,
                 data: {
                     id: id,
                     result: result,

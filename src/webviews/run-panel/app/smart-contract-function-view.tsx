@@ -4,10 +4,11 @@ import AceEditor from "react-ace";
 import "ace-builds/src-noconflict/mode-json";
 import "ace-builds/src-noconflict/theme-twilight";
 import { FaPlay, FaSpinner } from 'react-icons/fa';
-import { Card, Dropdown, DropdownButton, Form, Button, ButtonGroup, Tabs, Tab, Container, Row, Col } from 'react-bootstrap';
+import { Card, Dropdown, DropdownButton, Form, InputGroup, Button, ButtonGroup, Tabs, Tab, Container, Row, Col } from 'react-bootstrap';
 import { SmartContractPropertyView } from './smart-contract-property-view';
-import Utils from './app-utils';
+import { Coin, Utils } from './app-utils';
 import { SmartContractFunction, SmartContractFunctionProperty, SmartContractFunctionType } from './smart-contract-function';
+import { ProvenanceMarker } from './provenance-marker';
 import { SigningKey } from './signing-key';
 
 import './smart-contract-function-view.scss';
@@ -15,6 +16,7 @@ import './smart-contract-function-view.scss';
 interface SmartContractFunctionViewProps {
     function: SmartContractFunction,
     signingKeys: SigningKey[],
+    markers: ProvenanceMarker[],
     index: number
 }
 
@@ -22,7 +24,9 @@ interface SmartContractFunctionViewState {
     busy: boolean,
     result: any,
     activeKey: string,
-    signingKey: string
+    signingKey: string,
+    shouldSendCoin: boolean,
+    sendCoin: Coin
 }
 
 export default class SmartContractFunctionView extends React.Component<SmartContractFunctionViewProps, SmartContractFunctionViewState> {
@@ -36,12 +40,18 @@ export default class SmartContractFunctionView extends React.Component<SmartCont
             busy: false,
             result: {},
             activeKey: 'builder',
-            signingKey: (props.signingKeys[0] ? props.signingKeys[0].name : '')
+            signingKey: (props.signingKeys[0] ? props.signingKeys[0].name : ''),
+            shouldSendCoin: false,
+            sendCoin: {
+                denom: (props.markers[0] ? props.markers[0].denom : ''),
+                amount: 0
+            }
         }
 
         this._jsonRefName = React.createRef();
     }
 
+    _coinAmountInput;
     _jsonRefName;
     _propertyViews: {[k: string]: SmartContractPropertyView} = {};
 
@@ -49,6 +59,7 @@ export default class SmartContractFunctionView extends React.Component<SmartCont
         const func = this.props.function;
         //const idx = this.props.index;
         const keys = this.props.signingKeys;
+        const markers = this.props.markers;
 
         const renderRunButtonContents = () => {
             if (!this.state.busy) {
@@ -64,7 +75,7 @@ export default class SmartContractFunctionView extends React.Component<SmartCont
                     <Button variant="primary" type="button" disabled={this.state.busy} onClick={this.runSmartContract}>
                         {renderRunButtonContents()}
                     </Button>
-                    <DropdownButton as={ButtonGroup} variant="secondary" disabled={this.state.busy} title={this.state.signingKey} id="bg-nested-dropdown">
+                    <DropdownButton as={ButtonGroup} variant="secondary" disabled={this.state.busy} title={this.state.signingKey}>
                         {keys.map((key, idx) =>
                             <Dropdown.Item onSelect={setSigningKey} eventKey={key.name}>{key.name}</Dropdown.Item>
                         )}
@@ -75,6 +86,35 @@ export default class SmartContractFunctionView extends React.Component<SmartCont
                 return <Button className="float-right" variant="primary" type="button" disabled={this.state.busy} onClick={this.runSmartContract}>
                     {renderRunButtonContents()}
                 </Button>;
+            }
+        }
+
+        const setShouldSendCoin = (checked) => {
+            this.setState({ shouldSendCoin: checked });
+        }
+
+        const setSendCoinMarker = (m) => {
+            this.setState({ sendCoin: {
+                denom: m,
+                amount: this.state.sendCoin.amount
+            }});
+        }
+
+        const renderSendCoin = () => {
+            if (func.type == SmartContractFunctionType.Execute) {
+                return <InputGroup className="float-left">
+                    <InputGroup.Prepend>
+                        <InputGroup.Checkbox onChange={e => setShouldSendCoin(e.currentTarget.checked)} />
+                    </InputGroup.Prepend>
+                    <Form.Control type="text" placeholder="amount" disabled={!this.state.shouldSendCoin} ref={(c) => this._coinAmountInput = c} />
+                    <DropdownButton as={InputGroup.Append} variant="secondary" title={this.state.sendCoin.denom} disabled={!this.state.shouldSendCoin}>
+                        {markers.map((marker, idx) =>
+                            <Dropdown.Item onSelect={setSendCoinMarker} eventKey={marker.denom}>{marker.denom}</Dropdown.Item>
+                        )}
+                    </DropdownButton>
+                </InputGroup>;
+            } else {
+                return <span></span>;
             }
         }
 
@@ -177,10 +217,9 @@ export default class SmartContractFunctionView extends React.Component<SmartCont
                     <Card.Body>
                         <Container className="sectionHeader" >
                             <Row className="clearfix align-items-center">
-                                <Col><h5 className="sectionHeaderTitle">Parameters</h5></Col>
-                                <Col>
-                                    {renderRunButtons()}
-                                </Col>
+                                <Col sm={3}><h5 className="sectionHeaderTitle">Parameters</h5></Col>
+                                <Col>{renderSendCoin()}</Col>
+                                <Col>{renderRunButtons()}</Col>
                             </Row>
                         </Container>
                         <hr className="scFunctionHR"/>
@@ -215,7 +254,21 @@ export default class SmartContractFunctionView extends React.Component<SmartCont
 
         // TODO: validate the properties?
 
-        Utils.runFunction(this.props.function, funcMessage, this.state.signingKey).then((result: any) => {
+        var coin: (Coin | undefined) = undefined;
+        if (this.state.shouldSendCoin) {
+            this.setState({ sendCoin: {
+                amount: Number(this._coinAmountInput.value),
+                denom: this.state.sendCoin.denom
+            } });
+            coin = {
+                amount: Number(this._coinAmountInput.value),
+                denom: this.state.sendCoin.denom
+            };
+            console.log('SENDING COIN WITH TX');
+            console.dir(coin);
+        }
+
+        Utils.runFunction(this.props.function, funcMessage, this.state.signingKey, coin).then((result: any) => {
             this.setState({ busy: false, result: result });
         }).catch((err) => {
             console.log(`Error executing function ${this.props.function.name}: ${err.message}`);

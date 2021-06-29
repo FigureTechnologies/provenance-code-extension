@@ -1,10 +1,10 @@
-.card.tableCard {
+.card.detailsCard {
     border-color: transparent;
     border: 0px;
     border-radius: 0px;
 }
 
-.tableCard .card-header {
+.detailsCard .card-header {
     background-color: rgb(41, 45, 62);
     border-radius: 0px;
     color: #fff;
@@ -14,15 +14,15 @@
     }
 }
 
-.tableCard .card-header:first-child {
+.detailsCard .card-header:first-child {
     border-radius: 0px;
 }
 
-.tableCard .card-body {
+.detailsCard .card-body {
     background-color: rgb(31, 34, 46);
     color: #fff;
 }
 
-.markerTableField {
+.markerDetailsField {
     font-family: monospace;
 }

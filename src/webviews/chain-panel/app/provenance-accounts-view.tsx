@@ -1,14 +1,16 @@
 import * as React from "react";
 import './provenance-accounts-view.scss';
-import { FaPlus } from 'react-icons/fa';
+import { FaArrowUp, FaPlus } from 'react-icons/fa';
 
 import { Breadcrumb, Button, Card, OverlayTrigger, Table, Tooltip } from 'react-bootstrap';
-import { ChainViewAppBinding } from './app-binding';
+import { Alert, ChainViewAppBinding } from './app-binding';
 import { ProvenanceKey } from './provenance-key';
 import { ProvenanceAccountBalance } from './provenance-account-balance';
+import { Utils } from './app-utils';
 
 import AccountDetailsView from './account-details-view';
 import AddKeyModal from './add-key-modal';
+import RecoverKeyModal from './recover-key-modal';
 
 interface ProvenanceAccountDetails {
     key: ProvenanceKey,
@@ -22,6 +24,7 @@ interface ProvenanceAccountsViewProps {
 
 interface ProvenanceAccountsViewState {
     accountDetails: (ProvenanceAccountDetails | undefined),
+    recoverKeyModalShown: boolean,
     addKeyModalShown: boolean
 }
 
@@ -32,6 +35,7 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
 
         this.state = {
             accountDetails: undefined,
+            recoverKeyModalShown: false,
             addKeyModalShown: false
         };
     }
@@ -62,6 +66,18 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
             });
         };
 
+        const showRecoverKeyModal = () => {
+            this.setState({
+                recoverKeyModalShown: true
+            });
+        };
+
+        const hideRecoverKeyModal = () => {
+            this.setState({
+                recoverKeyModalShown: false
+            });
+        };
+
         const showAddKeyModal = () => {
             this.setState({
                 addKeyModalShown: true
@@ -74,9 +90,13 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
             });
         };
 
+        const renderRecoverKeyTooltip = (props) => (
+            <Tooltip id="recover-button-tooltip" {...props}>Recover key from mnemonic</Tooltip>
+        );
+
         const renderAddKeyTooltip = (props) => (
-            <Tooltip id="button-tooltip" {...props}>New key/account</Tooltip>
-        );          
+            <Tooltip id="add-button-tooltip" {...props}>New key/account</Tooltip>
+        );
 
         return (
             <React.Fragment>
@@ -95,10 +115,24 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
                                 <Button 
                                     variant="primary" 
                                     size="sm" 
-                                    className="float-right" 
+                                    className="float-right mr-1" 
                                     onClick={() => showAddKeyModal()}
                                 >
                                         <FaPlus />
+                                </Button>
+                            </OverlayTrigger>
+                            <OverlayTrigger
+                                placement="bottom"
+                                delay={{ show: 250, hide: 400 }}
+                                overlay={renderRecoverKeyTooltip}
+                            >
+                                <Button 
+                                    variant="primary" 
+                                    size="sm" 
+                                    className="float-right mr-1" 
+                                    onClick={() => showRecoverKeyModal()}
+                                >
+                                        <FaArrowUp />
                                 </Button>
                             </OverlayTrigger>
                         </Card.Header>
@@ -113,7 +147,7 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
                                 </thead>
                                 <tbody className="accountTableField noselect">
                                     {keys.map((key, idx) =>
-                                        <tr>
+                                        <tr key={key.name}>
                                             <td>{key.name}</td>
                                             <td>{key.type}</td>
                                             <td><a href="#" onClick={() => showAccountDetails(key)}>{key.address}</a></td>
@@ -125,7 +159,30 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
                     </Card>
                 }
                 { isAccountDetailsShown() && <AccountDetailsView accountKey={this.state.accountDetails.key} accountBalances={this.state.accountDetails.balances}></AccountDetailsView> }
-                <AddKeyModal show={this.state.addKeyModalShown} onCancel={() => hideAddKeyModal() }></AddKeyModal>
+                <RecoverKeyModal
+                    show={this.state.recoverKeyModalShown}
+                    onCancel={() => hideRecoverKeyModal()}
+                    onKeyRecovered={(key) => { 
+                        hideRecoverKeyModal();
+                        Utils.showAlert(Alert.Success, `Recovered key "${key.name}" from mnemonic`, `Address: ${key.address}\nPublic key: ${key.pubkey}`, true);
+                    }}
+                    onError={(err) => {
+                        hideRecoverKeyModal();
+                        Utils.showAlert(Alert.Danger, `Unable to recover key from mnemonic`, err.message, true);
+                    }}
+                ></RecoverKeyModal>
+                <AddKeyModal
+                    show={this.state.addKeyModalShown}
+                    onCancel={() => hideAddKeyModal()}
+                    onKeyCreated={(key) => { 
+                        hideAddKeyModal();
+                        Utils.showAlert(Alert.Success, `Created new key "${key.name}"`, `**Important** write this mnemonic phrase in a safe place.\nIt is the only way to recover your account if you ever forget your password.\n\n${key.mnemonic}`, true);
+                    }}
+                    onError={(err) => {
+                        hideAddKeyModal();
+                        Utils.showAlert(Alert.Danger, `Unable to create new key`, err.message, true);
+                    }}
+                ></AddKeyModal>
             </React.Fragment>
         );
     }
