@@ -30,7 +30,9 @@ export enum Command {
     CreateKeyRequest = "create-key-request",
     CreateKeyResponse = "create-key-response",
     RecoverKeyRequest = "recover-key-request",
-    RecoverKeyResponse = "recover-key-response"
+    RecoverKeyResponse = "recover-key-response",
+    DeleteKeyRequest = "delete-key-request",
+    DeleteKeyResponse = "delete-key-response"
 }
 
 export interface Event {
@@ -105,6 +107,22 @@ export interface RecoverKeyResponseEvent extends EventData {
     id: string,
     result: RecoverKeyResult,
     data: (ProvenanceKey | undefined),
+    error: Error
+}
+
+export enum DeleteKeyResult {
+    Success = 'success',
+    Error = 'error'
+}
+
+export interface DeleteKeyRequestEvent extends EventData {
+    id: string,
+    name: string
+}
+
+export interface DeleteKeyResponseEvent extends EventData {
+    id: string,
+    result: DeleteKeyResult,
     error: Error
 }
 
@@ -245,6 +263,20 @@ export class ChainViewAppBinding {
                     this.postRecoverKeyResponseEvent(recoverKeyReq.id, RecoverKeyResult.Error, undefined, new Error('No request handler set.'));
                 }
             } break;
+
+            case Command.DeleteKeyRequest: {
+                const deleteKeyReq = event.data as DeleteKeyRequestEvent;
+                console.log(`Received request ${deleteKeyReq.id} to delete key ${deleteKeyReq.name}`);
+                if (this.onDeleteKeyRequestHandler) {
+                    this.onDeleteKeyRequestHandler(deleteKeyReq.name, () => {
+                        this.postDeleteKeyResponseEvent(deleteKeyReq.id, DeleteKeyResult.Success, undefined);
+                    }, (err: Error) => {
+                        this.postDeleteKeyResponseEvent(deleteKeyReq.id, DeleteKeyResult.Error, err);
+                    });
+                } else {
+                    this.postDeleteKeyResponseEvent(deleteKeyReq.id, DeleteKeyResult.Error, new Error('No request handler set.'));
+                }
+            } break;
         }
     }
 
@@ -294,6 +326,14 @@ export class ChainViewAppBinding {
                     this.responseHandlers[recoverKeyResponseEvent.id](recoverKeyResponseEvent);
                 }
             } break;
+
+            case Command.DeleteKeyResponse: {
+                const deleteKeyResponseEvent: DeleteKeyResponseEvent = event.data as DeleteKeyResponseEvent;
+                console.dir(deleteKeyResponseEvent);
+                if (deleteKeyResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[deleteKeyResponseEvent.id](deleteKeyResponseEvent);
+                }
+            }
         }
     }
 
@@ -408,6 +448,37 @@ export class ChainViewAppBinding {
         });
     }
 
+    onDeleteKeyRequest(handler: ((name: string, resolve: (() => void), reject: ((err: Error) => void)) => void)) {
+        this.onDeleteKeyRequestHandler = handler;
+    }
+    private onDeleteKeyRequestHandler: ((name: string, resolve: (() => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public deleteKey(name: string): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            if (this._vscode) {
+                const deleteKeyReqData: DeleteKeyRequestEvent = {
+                    id: uuidv4(),
+                    name: name
+                };
+                const deleteKeyReqMessage: Event = {
+                    command: Command.DeleteKeyRequest,
+                    data: deleteKeyReqData
+                };
+                this.registerResponse(deleteKeyReqData.id, (eventData: EventData) => {
+                    const deleteKeyResMessage = eventData as DeleteKeyResponseEvent;
+                    if (deleteKeyResMessage.result == DeleteKeyResult.Success) {
+                        resolve();
+                    } else {
+                        reject(deleteKeyResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(deleteKeyReqMessage);
+            } else {
+                reject(new Error('Cannot execute `deleteKey` from VSCode'));
+            }
+        });
+    }
+
     public createMarker(): Promise<void> {
         return new Promise<void>((resolve, reject) => {
             if (this._vscode) {
@@ -503,6 +574,20 @@ export class ChainViewAppBinding {
                     id: id,
                     result: result,
                     data: data,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postDeleteKeyResponseEvent(id: string, result: DeleteKeyResult, error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.DeleteKeyResponse,
+                data: {
+                    id: id,
+                    result: result,
                     error: error
                 }
             };
