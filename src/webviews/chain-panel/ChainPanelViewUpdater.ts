@@ -16,12 +16,12 @@ export class ChainPanelViewUpdater {
     static provenance: Provenance;
 
 	static update(config: ProvenanceConfig, type: ChainPanelViewUpdateType = ChainPanelViewUpdateType.All): void {
-		if(ChainPanelViewUpdater.chainViewApp.isReady) {
+		if(ChainPanelViewUpdater.chainViewApp && ChainPanelViewUpdater.chainViewApp.isReady) {
 
 			// update the accounts/keys
 			if (type == ChainPanelViewUpdateType.All || type == ChainPanelViewUpdateType.Keys) {
 				ChainPanelViewUpdater.provenance.getAllKeys().then((keys) => {
-					console.log('Setting keys...');
+					console.log(`Setting keys (${keys.length})...`);
 					ChainPanelViewUpdater.chainViewApp.keys = keys;
 				}).catch((err) => {
 					vscode.window.showErrorMessage(err.message);
@@ -32,7 +32,7 @@ export class ChainPanelViewUpdater {
 			// update the markers
 			if (type == ChainPanelViewUpdateType.All || type == ChainPanelViewUpdateType.Markers) {
 				ChainPanelViewUpdater.provenance.getAllMarkers().then((markers) => {
-					console.log('Setting markers...');
+					console.log(`Setting markers (${markers.length})...`);
 					ChainPanelViewUpdater.chainViewApp.markers = markers;
 				}).catch((err) => {
 					vscode.window.showErrorMessage(err.message);

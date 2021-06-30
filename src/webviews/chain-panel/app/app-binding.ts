@@ -34,7 +34,9 @@ export enum Command {
     DeleteKeyRequest = "delete-key-request",
     DeleteKeyResponse = "delete-key-response",
     CreateMarkerRequest = "create-marker-request",
-    CreateMarkerResponse = "create-marker-response"
+    CreateMarkerResponse = "create-marker-response",
+    DeleteMarkerRequest = "delete-marker-request",
+    DeleteMarkerResponse = "delete-marker-response"
 }
 
 export interface Event {
@@ -146,6 +148,23 @@ export interface CreateMarkerResponseEvent extends EventData {
     id: string,
     result: CreateMarkerResult,
     data: (ProvenanceMarker | undefined),
+    error: Error
+}
+
+export enum DeleteMarkerResult {
+    Success = 'success',
+    Error = 'error'
+}
+
+export interface DeleteMarkerRequestEvent extends EventData {
+    id: string,
+    denom: string,
+    from: string
+}
+
+export interface DeleteMarkerResponseEvent extends EventData {
+    id: string,
+    result: DeleteMarkerResult,
     error: Error
 }
 
@@ -314,6 +333,20 @@ export class ChainViewAppBinding {
                     this.postCreateMarkerResponseEvent(createMarkerReq.id, CreateMarkerResult.Error, undefined, new Error('No request handler set.'));
                 }
             } break;
+
+            case Command.DeleteMarkerRequest: {
+                const deleteMarkerReq = event.data as DeleteMarkerRequestEvent;
+                console.log(`Received request ${deleteMarkerReq.id} to delete marker ${deleteMarkerReq.denom} from ${deleteMarkerReq.from}`);
+                if (this.onDeleteMarkerRequestHandler) {
+                    this.onDeleteMarkerRequestHandler(deleteMarkerReq.denom, deleteMarkerReq.from, () => {
+                        this.postDeleteMarkerResponseEvent(deleteMarkerReq.id, DeleteMarkerResult.Success, undefined);
+                    }, (err: Error) => {
+                        this.postDeleteMarkerResponseEvent(deleteMarkerReq.id, DeleteMarkerResult.Error, err);
+                    });
+                } else {
+                    this.postDeleteMarkerResponseEvent(deleteMarkerReq.id, DeleteMarkerResult.Error, new Error('No request handler set.'));
+                }
+            } break;
         }
     }
 
@@ -377,6 +410,14 @@ export class ChainViewAppBinding {
                 console.dir(createMarkerResponseEvent);
                 if (createMarkerResponseEvent.id in this.responseHandlers) {
                     this.responseHandlers[createMarkerResponseEvent.id](createMarkerResponseEvent);
+                }
+            } break;
+
+            case Command.DeleteMarkerResponse: {
+                const deleteMarkerResponseEvent: DeleteMarkerResponseEvent = event.data as DeleteMarkerResponseEvent;
+                console.dir(deleteMarkerResponseEvent);
+                if (deleteMarkerResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[deleteMarkerResponseEvent.id](deleteMarkerResponseEvent);
                 }
             } break;
         }
@@ -559,6 +600,38 @@ export class ChainViewAppBinding {
         });
     }
 
+    onDeleteMarkerRequest(handler: ((denom: string, from: string, resolve: (() => void), reject: ((err: Error) => void)) => void)) {
+        this.onDeleteMarkerRequestHandler = handler;
+    }
+    private onDeleteMarkerRequestHandler: ((denom: string, from: string, resolve: (() => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public deleteMarker(denom: string, from: string): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            if (this._vscode) {
+                const deleteMarkerReqData: DeleteMarkerRequestEvent = {
+                    id: uuidv4(),
+                    denom: denom,
+                    from: from
+                };
+                const deleteMarkerReqMessage: Event = {
+                    command: Command.DeleteMarkerRequest,
+                    data: deleteMarkerReqData
+                };
+                this.registerResponse(deleteMarkerReqData.id, (eventData: EventData) => {
+                    const deleteMarkerResMessage = eventData as DeleteMarkerResponseEvent;
+                    if (deleteMarkerResMessage.result == DeleteMarkerResult.Success) {
+                        resolve();
+                    } else {
+                        reject(deleteMarkerResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(deleteMarkerReqMessage);
+            } else {
+                reject(new Error('Cannot execute `deleteMarker` from VSCode'));
+            }
+        });
+    }
+
     public static getCodeInstance(webview: vscode.Webview): ChainViewAppBinding {
         if (!ChainViewAppBinding.instance) {
             ChainViewAppBinding.instance = new ChainViewAppBinding();
@@ -673,6 +746,20 @@ export class ChainViewAppBinding {
                     id: id,
                     result: result,
                     data: data,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postDeleteMarkerResponseEvent(id: string, result: DeleteMarkerResult, error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.DeleteMarkerResponse,
+                data: {
+                    id: id,
+                    result: result,
                     error: error
                 }
             };

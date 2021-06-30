@@ -24,6 +24,11 @@ export class Utils {
         return appBinding.createMarker(denom, supply, type, manager, access);
     }
 
+    static deleteMarker (denom: string, from: string): Promise<void> {
+        const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();
+        return appBinding.deleteMarker(denom, from);
+    }
+
     static showAlert (type: Alert, title: string, body: string, dismissable: boolean): Promise<void> {
         return new Promise<void>((resolve, reject) => {
             const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();
