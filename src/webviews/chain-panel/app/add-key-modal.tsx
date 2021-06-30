@@ -1,12 +1,13 @@
 import * as React from "react";
 import './add-key-modal.scss';
 
-import { Button, Col, Form, Modal, Row } from 'react-bootstrap';
+import { Button, Col, Form, Modal, Row, Spinner } from 'react-bootstrap';
 import { ProvenanceKey } from './provenance-key';
 import { Utils } from './app-utils';
 
 interface ValidationInfo {
     isValid: boolean,
+    isValidated: boolean,
     error: (string | undefined)
 }
 
@@ -18,6 +19,7 @@ interface AddKeyModalProps {
 }
 
 interface AddKeyModalState {
+    isBusy: boolean,
     formValid: boolean,
     formValidated: boolean,
     keyNameValidation: ValidationInfo
@@ -29,10 +31,12 @@ export default class AddKeyModal extends React.Component<AddKeyModalProps, AddKe
         super(props);
 
         this.state = {
+            isBusy: false,
             formValid: false,
             formValidated: false,
             keyNameValidation: {
                 isValid: true,
+                isValidated: false,
                 error: undefined
             }
         };
@@ -44,10 +48,12 @@ export default class AddKeyModal extends React.Component<AddKeyModalProps, AddKe
 
     reset() {
         this.setState({
+            isBusy: false,
             formValid: false,
             formValidated: false,
             keyNameValidation: {
                 isValid: true,
+                isValidated: false,
                 error: undefined
             }
         });
@@ -57,6 +63,7 @@ export default class AddKeyModal extends React.Component<AddKeyModalProps, AddKe
         const validateKeyName = (value) => {
             var validationInfo: ValidationInfo = {
                 isValid: true,
+                isValidated: true,
                 error: undefined
             };
 
@@ -70,7 +77,7 @@ export default class AddKeyModal extends React.Component<AddKeyModalProps, AddKe
 
             this.setState({
                 formValid: validationInfo.isValid,
-                formValidated: true,
+                formValidated: validationInfo.isValidated,
                 keyNameValidation: validationInfo
             });
         }
@@ -82,11 +89,11 @@ export default class AddKeyModal extends React.Component<AddKeyModalProps, AddKe
                     size="lg"
                     aria-labelledby="contained-modal-title-vcenter"
                     centered
-                    onHide={() => this.props.onCancel()}
+                    onHide={() => { if (!this.state.isBusy) this.props.onCancel(); }}
                     onEnter={() => this.reset()}
                     className="addKeyModal"
                 >
-                    <Modal.Header closeButton>
+                    <Modal.Header closeButton={!this.state.isBusy}>
                         <Modal.Title id="contained-modal-title-vcenter">Create New Key</Modal.Title>
                     </Modal.Header>
                     <Modal.Body>
@@ -100,6 +107,7 @@ export default class AddKeyModal extends React.Component<AddKeyModalProps, AddKe
                                         ref={(c) => this._input_keyName = c}
                                         onChange={e => validateKeyName(e.currentTarget.value)}
                                         isInvalid={!this.state.keyNameValidation.isValid}
+                                        disabled={this.state.isBusy}
                                     />
                                     <Form.Control.Feedback type="invalid">{this.state.keyNameValidation.error}</Form.Control.Feedback>
                                 </Col>
@@ -107,8 +115,27 @@ export default class AddKeyModal extends React.Component<AddKeyModalProps, AddKe
                         </Form>
                     </Modal.Body>
                     <Modal.Footer>
-                        <Button variant="primary" onClick={this.createKey} disabled={!this.state.formValid}>Create Key</Button>
-                        <Button variant="secondary" onClick={() => this.props.onCancel()}>Cancel</Button>
+                        <Button 
+                            variant="primary" 
+                            onClick={this.createKey} 
+                            disabled={this.state.isBusy || (!this.state.formValidated || !this.state.formValid)}
+                        >
+                            { this.state.isBusy ? <span><Spinner
+                                as="span"
+                                animation="border"
+                                size="sm"
+                                role="status"
+                                aria-hidden="true"
+                                /> Creating Key...</span>
+                            : <span>Create Key</span>}
+                        </Button>
+                        <Button 
+                            variant="secondary" 
+                            onClick={() => this.props.onCancel()}
+                            disabled={this.state.isBusy}
+                        >
+                            Cancel
+                        </Button>
                     </Modal.Footer>
                 </Modal>
             </React.Fragment>
@@ -116,14 +143,18 @@ export default class AddKeyModal extends React.Component<AddKeyModalProps, AddKe
     }
 
     private createKey() {
+        this.setState({ isBusy: true });
+
         const keyName = this._input_keyName.value as string;
         Utils.createKey(keyName).then((key: (ProvenanceKey | undefined)) => {
+            this.setState({ isBusy: false });
             if (key) {
                 this.props.onKeyCreated(key);
             } else {
                 this.props.onError(new Error(`Unknown error creating key ${keyName}`));
             }
         }).catch((err) => {
+            this.setState({ isBusy: false });
             this.props.onError(err);
         });
     }

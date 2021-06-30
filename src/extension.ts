@@ -3,7 +3,7 @@ import * as glob from 'glob';
 import * as async from 'async';
 
 import { Utils } from './utils';
-import { Key, Marker, Provenance, ProvenanceConfig, ProvenanceKeyConfig, ProvenanceMarkerConfig } from './ProvenanceClient'
+import { Key, Marker, MarkerAccess, MarkerType, Provenance, ProvenanceConfig, ProvenanceKeyConfig, ProvenanceMarkerConfig, ProvenanceMarkerGrant } from './ProvenanceClient'
 
 import { ChainViewAppBinding } from './webviews/chain-panel/app/app-binding';
 import { ChainPanelViewLoader } from './webviews/chain-panel/ChainPanelViewLoader';
@@ -16,6 +16,7 @@ import { RunPanelViewUpdater } from './webviews/run-panel/RunPanelViewUpdater';
 import { SmartContractFunction, SmartContractFunctions } from './webviews/run-panel/app/smart-contract-function';
 import { ProvenanceAccountBalance } from './webviews/chain-panel/app/provenance-account-balance';
 import { ProvenanceKey } from './webviews/chain-panel/app/provenance-key';
+import { ProvenanceMarker, ProvenanceMarkerAccessControl } from './webviews/chain-panel/app/provenance-marker';
 
 let provenance: Provenance = new Provenance();
 let lastWasmCodeId: number = -1;
@@ -171,7 +172,7 @@ async function ensureMarkersExist(markers: ProvenanceMarkerConfig[]): Promise<vo
 			console.log(`Checking if marker exists: ${marker.denom}`);
 			if (!provenance.doesMarkerExist(marker.denom)) {
 				console.log(`Marker does not exist: ${marker.denom}`);
-				createMarkers.push(provenance.createMarker(marker.denom, marker.supply, marker.manager, marker.grants));
+				createMarkers.push(provenance.createMarker(marker.denom, marker.supply, marker.manager, marker.type.toUpperCase() as MarkerType, marker.grants));
 			} else {
 				console.log(`Marker exists: ${marker.denom}`);
 			}
@@ -475,6 +476,44 @@ export function activate(context: vscode.ExtensionContext) {
 					reject(err);
 				});
 			});
+
+			chainViewApp.onCreateMarkerRequest((denom: string, supply: number, type: string, manager: string, access: ProvenanceMarkerAccessControl[], resolve: ((result: ProvenanceMarker) => void), reject: ((err: Error) => void)) => {
+				console.log('onCreateMarkerRequest');
+
+				var markerType: MarkerType = MarkerType.Coin;
+				if (type == 'restricted') markerType = MarkerType.Restricted;
+
+				var markerGrants: ProvenanceMarkerGrant[] = [];
+				access.forEach((priv) => {
+					var grant: ProvenanceMarkerGrant = {
+						key: priv.address,
+						privs: []
+					};
+
+					priv.permissions.forEach((perm) => {
+						if (perm == 'ACCESS_ADMIN') grant.privs.push(MarkerAccess.Admin);
+						if (perm == 'ACCESS_BURN') grant.privs.push(MarkerAccess.Burn);
+						if (perm == 'ACCESS_DELETE') grant.privs.push(MarkerAccess.Delete);
+						if (perm == 'ACCESS_DEPOSIT') grant.privs.push(MarkerAccess.Deposit);
+						if (perm == 'ACCESS_MINT') grant.privs.push(MarkerAccess.Mint);
+						if (perm == 'ACCESS_TRANSFER') grant.privs.push(MarkerAccess.Transfer);
+						if (perm == 'ACCESS_WITHDRAW') grant.privs.push(MarkerAccess.Withdraw);
+					});
+
+					markerGrants.push(grant);
+				});
+
+				provenance.createMarker(denom, supply, manager, markerType, markerGrants).then((marker) => {
+					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
+						RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.Markers);
+					});
+					resolve(marker);
+				}).catch((err) => {
+					vscode.window.showErrorMessage(err.message);
+					reject(err);
+				});
+			});
 		});
 	});
 
@@ -678,71 +717,6 @@ function updateStatusBar(): void {
 	rightStatusBarSepItem.text = '|';
 	rightStatusBarSepItem.show();
 }
-
-/*
-function updateRunView(config: ProvenanceConfig): void {
-	if(runViewApp.isReady) {
-		// hide all alerts first
-		runViewApp.clearAlerts();
-
-		// get contract info
-		provenance.getContractByContractLabel(config.contractLabel).then((contract) => {
-			console.log('Setting contract info...');
-			runViewApp.contractInfo = {
-				name: config.contractLabel,
-				address: contract.address,
-				codeId: contract.contract_info.code_id,
-				isSingleton: config.isSingleton,
-				initFunction: {
-					name: 'instantiate',
-					type: SmartContractFunctionType.Instantiate,
-					properties: [] // TODO: Build props from config.initArgs
-				}
-			};
-		}).catch((err) => {
-			console.log('Contract not found...');
-			runViewApp.contractInfo = {
-				name: config.contractLabel,
-				address: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
-				codeId: 0,
-				isSingleton: true,
-				initFunction: {
-					name: 'instantiate',
-					type: SmartContractFunctionType.Instantiate,
-					properties: []
-				}
-			};
-
-			runViewApp.showAlert(Alert.Danger, 'Contract not found!', 'Before you can execute the contract, you must first build, store and instantiate it on the Provenance blockchain.', false);
-		});
-
-		// get signing keys
-		provenance.getAllKeys().then((keys) => {
-			console.log('Setting keys...');
-			runViewApp.signingKeys = keys;
-		}).catch((err) => {
-			vscode.window.showErrorMessage(err.message);
-		});
-
-		// get markers
-		provenance.getAllMarkers().then((markers) => {
-			console.log('Setting markers...');
-			runViewApp.markers = markers;
-		}).catch((err) => {
-			vscode.window.showErrorMessage(err.message);
-		});
-
-		// load contract function info from JSON schemas
-		Utils.loadContractFunctions().then((funcs: SmartContractFunctions) => {
-			console.log('Setting contract functions...');
-			runViewApp.executeFunctions = funcs.executeFunctions;
-			runViewApp.queryFunctions = funcs.queryFunctions;
-		}).catch((err) => {
-			vscode.window.showErrorMessage(err.message);
-		});
-	}
-}
-*/
 
 // this method is called when your extension is deactivated
 export function deactivate() {}

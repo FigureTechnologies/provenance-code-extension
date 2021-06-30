@@ -1,12 +1,13 @@
 import * as React from "react";
 import './recover-key-modal.scss';
 
-import { Button, Col, Form, Modal, Row } from 'react-bootstrap';
+import { Button, Col, Form, Modal, Row, Spinner } from 'react-bootstrap';
 import { ProvenanceKey } from './provenance-key';
 import { Utils } from './app-utils';
 
 interface ValidationInfo {
     isValid: boolean,
+    isValidated: boolean,
     error: (string | undefined)
 }
 
@@ -18,6 +19,7 @@ interface RecoverKeyModalProps {
 }
 
 interface RecoverKeyModalState {
+    isBusy: boolean,
     formValid: boolean,
     formValidated: boolean,
     keyNameValidation: ValidationInfo,
@@ -30,14 +32,17 @@ export default class RecoverKeyModal extends React.Component<RecoverKeyModalProp
         super(props);
 
         this.state = {
+            isBusy: false,
             formValid: false,
             formValidated: false,
             keyNameValidation: {
                 isValid: true,
+                isValidated: false,
                 error: undefined
             },
             keyMnemonicValidation: {
                 isValid: true,
+                isValidated: false,
                 error: undefined
             }
         };
@@ -50,14 +55,17 @@ export default class RecoverKeyModal extends React.Component<RecoverKeyModalProp
 
     reset() {
         this.setState({
+            isBusy: false,
             formValid: false,
             formValidated: false,
             keyNameValidation: {
                 isValid: true,
+                isValidated: false,
                 error: undefined
             },
             keyMnemonicValidation: {
                 isValid: true,
+                isValidated: false,
                 error: undefined
             }
         });
@@ -67,6 +75,7 @@ export default class RecoverKeyModal extends React.Component<RecoverKeyModalProp
         const validateKeyName = (value) => {
             var validationInfo: ValidationInfo = {
                 isValid: true,
+                isValidated: true,
                 error: undefined
             };
 
@@ -79,8 +88,8 @@ export default class RecoverKeyModal extends React.Component<RecoverKeyModalProp
             }
 
             this.setState({
-                formValid: validationInfo.isValid,
-                formValidated: true,
+                formValid: validationInfo.isValid && this.state.keyMnemonicValidation.isValid,
+                formValidated: validationInfo.isValidated && this.state.keyMnemonicValidation.isValidated,
                 keyNameValidation: validationInfo
             });
         }
@@ -88,6 +97,7 @@ export default class RecoverKeyModal extends React.Component<RecoverKeyModalProp
         const validateKeyMnemonic = (value) => {
             var validationInfo: ValidationInfo = {
                 isValid: true,
+                isValidated: true,
                 error: undefined
             };
 
@@ -97,8 +107,8 @@ export default class RecoverKeyModal extends React.Component<RecoverKeyModalProp
             }
 
             this.setState({
-                formValid: validationInfo.isValid,
-                formValidated: true,
+                formValid: validationInfo.isValid && this.state.keyNameValidation.isValid,
+                formValidated: validationInfo.isValidated && this.state.keyNameValidation.isValidated,
                 keyMnemonicValidation: validationInfo
             });
         }
@@ -110,11 +120,11 @@ export default class RecoverKeyModal extends React.Component<RecoverKeyModalProp
                     size="lg"
                     aria-labelledby="contained-modal-title-vcenter"
                     centered
-                    onHide={() => this.props.onCancel()}
+                    onHide={() => { if (!this.state.isBusy) this.props.onCancel(); }}
                     onEnter={() => this.reset()}
                     className="recoverKeyModal"
                 >
-                    <Modal.Header closeButton>
+                    <Modal.Header closeButton={!this.state.isBusy}>
                         <Modal.Title id="contained-modal-title-vcenter">Recover Key from Mnemonic</Modal.Title>
                     </Modal.Header>
                     <Modal.Body>
@@ -128,6 +138,7 @@ export default class RecoverKeyModal extends React.Component<RecoverKeyModalProp
                                         ref={(c) => this._input_keyName = c}
                                         onChange={e => validateKeyName(e.currentTarget.value)}
                                         isInvalid={!this.state.keyNameValidation.isValid}
+                                        disabled={this.state.isBusy}
                                     />
                                     <Form.Control.Feedback type="invalid">{this.state.keyNameValidation.error}</Form.Control.Feedback>
                                 </Col>
@@ -141,6 +152,7 @@ export default class RecoverKeyModal extends React.Component<RecoverKeyModalProp
                                         ref={(c) => this._input_keyMnemonic = c}
                                         onChange={e => validateKeyMnemonic(e.currentTarget.value)}
                                         isInvalid={!this.state.keyMnemonicValidation.isValid}
+                                        disabled={this.state.isBusy}
                                     />
                                     <Form.Control.Feedback type="invalid">{this.state.keyMnemonicValidation.error}</Form.Control.Feedback>
                                 </Col>
@@ -148,8 +160,27 @@ export default class RecoverKeyModal extends React.Component<RecoverKeyModalProp
                         </Form>
                     </Modal.Body>
                     <Modal.Footer>
-                        <Button variant="primary" onClick={this.recoverKey} disabled={!this.state.formValid}>Recover Key</Button>
-                        <Button variant="secondary" onClick={() => this.props.onCancel()}>Cancel</Button>
+                        <Button 
+                            variant="primary" 
+                            onClick={this.recoverKey} 
+                            disabled={this.state.isBusy || (!this.state.formValidated || !this.state.formValid)}
+                        >
+                            { this.state.isBusy ? <span><Spinner
+                                as="span"
+                                animation="border"
+                                size="sm"
+                                role="status"
+                                aria-hidden="true"
+                                /> Recovering Key...</span>
+                            : <span>Recover Key</span>}
+                        </Button>
+                        <Button 
+                            variant="secondary" 
+                            onClick={() => this.props.onCancel()}
+                            disabled={this.state.isBusy}
+                        >
+                            Cancel
+                        </Button>
                     </Modal.Footer>
                 </Modal>
             </React.Fragment>
@@ -157,15 +188,19 @@ export default class RecoverKeyModal extends React.Component<RecoverKeyModalProp
     }
 
     private recoverKey() {
+        this.setState({ isBusy: true });
+
         const keyName = this._input_keyName.value as string;
         const keyMnemonic = this._input_keyMnemonic.value as string;
         Utils.recoverKey(keyName, keyMnemonic).then((key: (ProvenanceKey | undefined)) => {
+            this.setState({ isBusy: false });
             if (key) {
                 this.props.onKeyRecovered(key);
             } else {
                 this.props.onError(new Error(`Unknown error recovering key ${keyName}`));
             }
         }).catch((err) => {
+            this.setState({ isBusy: false });
             this.props.onError(err);
         });
     }

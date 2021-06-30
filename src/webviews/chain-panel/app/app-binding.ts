@@ -4,7 +4,7 @@ import { BehaviorSubject, Observable } from 'rxjs';
 
 import { ProvenanceAccountBalance } from './provenance-account-balance';
 import { ProvenanceKey } from './provenance-key';
-import { ProvenanceMarker } from './provenance-marker';
+import { ProvenanceMarker, ProvenanceMarkerAccessControl } from './provenance-marker';
 
 export interface EventData {
 }
@@ -32,7 +32,9 @@ export enum Command {
     RecoverKeyRequest = "recover-key-request",
     RecoverKeyResponse = "recover-key-response",
     DeleteKeyRequest = "delete-key-request",
-    DeleteKeyResponse = "delete-key-response"
+    DeleteKeyResponse = "delete-key-response",
+    CreateMarkerRequest = "create-marker-request",
+    CreateMarkerResponse = "create-marker-response"
 }
 
 export interface Event {
@@ -123,6 +125,27 @@ export interface DeleteKeyRequestEvent extends EventData {
 export interface DeleteKeyResponseEvent extends EventData {
     id: string,
     result: DeleteKeyResult,
+    error: Error
+}
+
+export enum CreateMarkerResult {
+    Success = 'success',
+    Error = 'error'
+}
+
+export interface CreateMarkerRequestEvent extends EventData {
+    id: string,
+    denom: string,
+    supply: number,
+    type: string,
+    manager: string,
+    access: ProvenanceMarkerAccessControl[]
+}
+
+export interface CreateMarkerResponseEvent extends EventData {
+    id: string,
+    result: CreateMarkerResult,
+    data: (ProvenanceMarker | undefined),
     error: Error
 }
 
@@ -277,6 +300,20 @@ export class ChainViewAppBinding {
                     this.postDeleteKeyResponseEvent(deleteKeyReq.id, DeleteKeyResult.Error, new Error('No request handler set.'));
                 }
             } break;
+
+            case Command.CreateMarkerRequest: {
+                const createMarkerReq = event.data as CreateMarkerRequestEvent;
+                console.log(`Received request ${createMarkerReq.id} to create marker with denom ${createMarkerReq.denom}`);
+                if (this.onCreateMarkerRequestHandler) {
+                    this.onCreateMarkerRequestHandler(createMarkerReq.denom, createMarkerReq.supply,createMarkerReq.type, createMarkerReq.manager, createMarkerReq.access, (result: ProvenanceMarker) => {
+                        this.postCreateMarkerResponseEvent(createMarkerReq.id, CreateMarkerResult.Success, result, undefined);
+                    }, (err: Error) => {
+                        this.postCreateMarkerResponseEvent(createMarkerReq.id, CreateMarkerResult.Error, undefined, err);
+                    });
+                } else {
+                    this.postCreateMarkerResponseEvent(createMarkerReq.id, CreateMarkerResult.Error, undefined, new Error('No request handler set.'));
+                }
+            } break;
         }
     }
 
@@ -333,7 +370,15 @@ export class ChainViewAppBinding {
                 if (deleteKeyResponseEvent.id in this.responseHandlers) {
                     this.responseHandlers[deleteKeyResponseEvent.id](deleteKeyResponseEvent);
                 }
-            }
+            } break;
+
+            case Command.CreateMarkerResponse: {
+                const createMarkerResponseEvent: CreateMarkerResponseEvent = event.data as CreateMarkerResponseEvent;
+                console.dir(createMarkerResponseEvent);
+                if (createMarkerResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[createMarkerResponseEvent.id](createMarkerResponseEvent);
+                }
+            } break;
         }
     }
 
@@ -479,10 +524,35 @@ export class ChainViewAppBinding {
         });
     }
 
-    public createMarker(): Promise<void> {
-        return new Promise<void>((resolve, reject) => {
+    onCreateMarkerRequest(handler: ((denom: string, supply: number, type: string, manager: string, access: ProvenanceMarkerAccessControl[], resolve: ((result: ProvenanceMarker) => void), reject: ((err: Error) => void)) => void)) {
+        this.onCreateMarkerRequestHandler = handler;
+    }
+    private onCreateMarkerRequestHandler: ((denom: string, supply: number, type: string, manager: string, access: ProvenanceMarkerAccessControl[], resolve: ((result: ProvenanceMarker) => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public createMarker(denom: string, supply: number, type: string, manager: string, access: ProvenanceMarkerAccessControl[]): Promise<(ProvenanceMarker | undefined)> {
+        return new Promise<(ProvenanceMarker | undefined)>((resolve, reject) => {
             if (this._vscode) {
-                // TODO
+                const createMarkerReqData: CreateMarkerRequestEvent = {
+                    id: uuidv4(),
+                    denom: denom,
+                    supply: supply,
+                    type: type,
+                    manager: manager,
+                    access: access
+                };
+                const createMarkerReqMessage: Event = {
+                    command: Command.CreateMarkerRequest,
+                    data: createMarkerReqData
+                };
+                this.registerResponse(createMarkerReqData.id, (eventData: EventData) => {
+                    const createMarkerResMessage = eventData as CreateMarkerResponseEvent;
+                    if (createMarkerResMessage.result == CreateMarkerResult.Success) {
+                        resolve(createMarkerResMessage.data);
+                    } else {
+                        reject(createMarkerResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(createMarkerReqMessage);
             } else {
                 reject(new Error('Cannot execute `createMarker` from VSCode'));
             }
@@ -588,6 +658,21 @@ export class ChainViewAppBinding {
                 data: {
                     id: id,
                     result: result,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postCreateMarkerResponseEvent(id: string, result: CreateMarkerResult, data: (ProvenanceMarker | undefined), error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.CreateMarkerResponse,
+                data: {
+                    id: id,
+                    result: result,
+                    data: data,
                     error: error
                 }
             };
