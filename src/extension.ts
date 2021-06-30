@@ -514,6 +514,27 @@ export function activate(context: vscode.ExtensionContext) {
 					reject(err);
 				});
 			});
+
+			chainViewApp.onDeleteMarkerRequest((denom: string, from: string, resolve: (() => void), reject: ((err: Error) => void)) => {
+				console.log('onDeleteMarkerRequest');
+
+				provenance.deleteMarker(denom, from).then(() => {
+					var checkInterval = setInterval(() => {
+						if(!provenance.doesMarkerExist(denom)) {
+							clearInterval(checkInterval);
+							
+							Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+								ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
+								RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.Markers);
+							});
+							resolve();
+						}
+					}, 500);
+				}).catch((err) => {
+					vscode.window.showErrorMessage(err.message);
+					reject(err);
+				});
+			});
 		});
 	});
 

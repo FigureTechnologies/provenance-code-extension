@@ -1,6 +1,7 @@
 import * as React from "react";
 import './provenance-markers-view.scss';
-import { FaPlus } from 'react-icons/fa';
+import { FaPlus, FaTrashAlt } from 'react-icons/fa';
+import Dialog from 'react-bootstrap-dialog';
 
 import { Breadcrumb, Button, Card, OverlayTrigger, Table, Tooltip } from 'react-bootstrap';
 import { Alert, ChainViewAppBinding } from './app-binding';
@@ -37,6 +38,8 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
         };
     }
 
+    confirmDeleteDialog: Dialog;
+
     render() {
         const keys = this.props.accountKeys;
         const markers = this.props.markers;
@@ -50,6 +53,32 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
                 markerDetails: {
                     marker: m
                 }
+            });
+        };
+
+        const deleteMarker = (m) => {
+            this.confirmDeleteDialog.show({
+                title: 'Confirm delete marker',
+                body: `Are you sure you want to delete the marker "${m.denom}"?`,
+                bsSize: 'small',
+                actions: [
+                    Dialog.OKAction(() => {
+                        // find account with delete permissions
+                        const deleter = m.access_control.find((access) => {
+                            return access.permissions.find((perm) => {
+                                return perm == 'ACCESS_DELETE';
+                            }) != undefined;
+                        });
+                        if(deleter != undefined) {
+                            Utils.deleteMarker(m.denom, deleter.address).catch((err) => {
+                                Utils.showAlert(Alert.Danger, `Unable to delete marker "${m.denom}"`, err.message, true);
+                            });
+                        } else {
+                            Utils.showAlert(Alert.Danger, `Unable to delete marker`, `Failed to locate an account with ACCESS_DELETE privileges to delete the marker.`, true);
+                        }
+                    }),
+                    Dialog.CancelAction()
+                ]
             });
         };
 
@@ -73,6 +102,10 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
 
         const renderAddMarkerTooltip = (props) => (
             <Tooltip id="button-tooltip" {...props}>New marker</Tooltip>
+        );
+
+        const renderDeleteMarkerTooltip = (props) => (
+            <Tooltip id="delete-button-tooltip" {...props}>Delete marker</Tooltip>
         );
 
         return (
@@ -108,6 +141,7 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
                                         <th>Status</th>
                                         <th>Supply</th>
                                         <th>Type</th>
+                                        <th>&nbsp;</th>
                                     </tr>
                                 </thead>
                                 <tbody className="markerTableField noselect">
@@ -118,6 +152,15 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
                                             <td>{marker.status}</td>
                                             <td>{marker.supply} {marker.supply_fixed && <span>(fixed)</span>}</td>
                                             <td>{marker.marker_type}</td>
+                                            <td>
+                                                {marker.denom != "nhash" && <OverlayTrigger
+                                                    placement="right"
+                                                    delay={{ show: 250, hide: 400 }}
+                                                    overlay={renderDeleteMarkerTooltip}
+                                                >
+                                                    <a href="#" className="actions" onClick={() => deleteMarker(marker)}><FaTrashAlt /></a>
+                                                </OverlayTrigger>}
+                                            </td>
                                         </tr>
                                     )}
                                 </tbody>
@@ -138,6 +181,7 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
                         Utils.showAlert(Alert.Danger, `Unable to create new marker`, err.message, true);
                     }}
                 ></AddMarkerModal>
+                <Dialog ref={(el) => { this.confirmDeleteDialog = el }} />
             </React.Fragment>
         );
     }

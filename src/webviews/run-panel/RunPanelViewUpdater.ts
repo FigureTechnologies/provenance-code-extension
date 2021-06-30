@@ -21,7 +21,7 @@ export class RunPanelViewUpdater {
     static functions: SmartContractFunctions;
 
 	static update(config: ProvenanceConfig, type: RunPanelViewUpdateType = RunPanelViewUpdateType.All): void {
-        if(RunPanelViewUpdater.runViewApp.isReady) {
+        if(RunPanelViewUpdater.runViewApp && RunPanelViewUpdater.runViewApp.isReady) {
             // hide all alerts first
             RunPanelViewUpdater.runViewApp.clearAlerts();
     

@@ -109,6 +109,13 @@ export enum MarkerType {
 	Restricted = 'RESTRICTED'
 }
 
+export enum MarkerStatus {
+	Active = "MARKER_STATUS_ACTIVE",
+	Cancelled = "MARKER_STATUS_CANCELLED",
+	Destroyed = "MARKER_STATUS_DESTROYED",
+	Proposed = "MARKER_STATUS_PROPOSED"
+}
+
 export interface MarkerBaseAccount {
 	address: string,
 	pub_key: string
@@ -249,6 +256,8 @@ enum WASMContractStateCommand {
 
 enum MarkerTransactionCommand {
 	Activate = "activate",
+	Cancel = "cancel",
+	Destroy = "destroy",
 	Finalize = "finalize",
 	Grant = "grant",
 	New = "new",
@@ -1047,6 +1056,122 @@ export class Provenance {
 		});
 	}
 
+	cancelMarker(denom: string, who: string): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			// reload the settings
+			this.loadSettings();
+
+			// use the provided signing key
+			var overrides: {[k: string]: any} = {};
+			overrides[ProvenanceClientFlags.From] = who;
+
+			// build the command
+			const command = this.buildCommand([
+				ProvenanceCommand.TX, 
+				TransactionCommand.Marker, 
+				MarkerTransactionCommand.Cancel, 
+				denom
+			], overrides, {}, true);
+
+			let marker_cancelled = false;
+			Utils.runCommand(command, (out: string) => {
+				var result = JSON.parse(out);
+	
+				result.logs.forEach((log: ProvenanceLog) => {
+					log.events.forEach((event: ProvenanceLogEvent) => {
+						if (event.type == 'provenance.marker.v1.EventMarkerCancel') {
+							marker_cancelled = true;
+						}
+					});
+				});
+			}).then (() => {
+				if (marker_cancelled) {
+					resolve();
+				} else {
+					reject(new Error(`Failed to cancel marker ${denom}`));
+				}
+			}).catch((err) => {
+				reject(new Error(`Failed to cancel marker ${denom}`));
+			});
+		});
+	}
+
+	destroyMarker(denom: string, who: string): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			// reload the settings
+			this.loadSettings();
+
+			// use the provided signing key
+			var overrides: {[k: string]: any} = {};
+			overrides[ProvenanceClientFlags.From] = who;
+
+			// build the command
+			const command = this.buildCommand([
+				ProvenanceCommand.TX, 
+				TransactionCommand.Marker, 
+				MarkerTransactionCommand.Destroy, 
+				denom
+			], overrides, {}, true);
+
+			let marker_destroyed = false;
+			Utils.runCommand(command, (out: string) => {
+				var result = JSON.parse(out);
+	
+				result.logs.forEach((log: ProvenanceLog) => {
+					log.events.forEach((event: ProvenanceLogEvent) => {
+						if (event.type == 'provenance.marker.v1.EventMarkerDelete') {
+							marker_destroyed = true;
+						}
+					});
+				});
+			}).then (() => {
+				if (marker_destroyed) {
+					resolve();
+				} else {
+					reject(new Error(`Failed to destroy marker ${denom}`));
+				}
+			}).catch((err) => {
+				reject(new Error(`Failed to destroy marker ${denom}`));
+			});
+		});
+	}
+
+	deleteMarker(denom: string, who: string): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			this.getMarker(denom).then((marker) => {
+				async.series([
+					(callback) => {
+						if (marker.status == MarkerStatus.Cancelled) {
+							// marker already cancelled
+							callback();
+						} else {
+							this.cancelMarker(denom, who).then(() => {
+								callback();
+							}).catch((err) => {
+								callback(err);
+							});
+						}
+					},
+					(callback) => {
+						this.destroyMarker(denom, who).then(() => {
+							callback();
+						}).catch((err) => {
+							callback(err);
+						});
+					}
+				], (err, results) => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
+			}).catch((err) => {
+				reject(err);
+			});
+		});
+	}
+
 	withdrawCoin(denom: string, amount: number, sender: (string | undefined), recipient: string): Promise<void> {
 		// reload the settings
 		this.loadSettings();
@@ -1088,17 +1213,6 @@ export class Provenance {
 			}).catch((err) => {
 				reject(new Error(`Failed to withdraw coin ${denom} to ${recipient}`));
 			});
-		});
-	}
-
-	recoverKeyFromMnemonic(name: string, mnemonic: string): Promise<Key> {
-		return new Promise<Key>((resolve, reject) => {
-			// reload the settings
-			this.loadSettings();
-
-			// TODO
-
-			reject(new Error('Unimplemented'));
 		});
 	}
 
