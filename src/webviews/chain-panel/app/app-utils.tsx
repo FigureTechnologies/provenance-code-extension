@@ -29,11 +29,22 @@ export class Utils {
         return appBinding.deleteMarker(denom, from);
     }
 
+    static grantMarkerPrivs (denom: string, access: ProvenanceMarkerAccessControl[], from: string): Promise<(ProvenanceMarker | undefined)> {
+        const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();
+        return appBinding.grantMarkerPrivs(denom, access, from);
+    }
+
     static showAlert (type: Alert, title: string, body: string, dismissable: boolean): Promise<void> {
         return new Promise<void>((resolve, reject) => {
             const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();
             appBinding.showAlert(type, title, body, dismissable);
             resolve();
+        });
+    }
+
+    static getKeyForAddress (keys: ProvenanceKey[], address: string): (ProvenanceKey | undefined) {
+        return keys.find((key) => {
+            return (key.address == address);
         });
     }
 

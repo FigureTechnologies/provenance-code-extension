@@ -535,6 +535,52 @@ export function activate(context: vscode.ExtensionContext) {
 					reject(err);
 				});
 			});
+
+			chainViewApp.onGrantMarkerPrivsRequest((denom: string, grants: ProvenanceMarkerAccessControl[], from: string, resolve: ((result: ProvenanceMarker) => void), reject: ((err: Error) => void)) => {
+				console.log('onGrantMarkerPrivsRequest');
+
+				var markerGrants: ProvenanceMarkerGrant[] = [];
+				grants.forEach((priv) => {
+					var grant: ProvenanceMarkerGrant = {
+						key: priv.address,
+						privs: []
+					};
+
+					priv.permissions.forEach((perm) => {
+						if (perm == 'ACCESS_ADMIN') grant.privs.push(MarkerAccess.Admin);
+						if (perm == 'ACCESS_BURN') grant.privs.push(MarkerAccess.Burn);
+						if (perm == 'ACCESS_DELETE') grant.privs.push(MarkerAccess.Delete);
+						if (perm == 'ACCESS_DEPOSIT') grant.privs.push(MarkerAccess.Deposit);
+						if (perm == 'ACCESS_MINT') grant.privs.push(MarkerAccess.Mint);
+						if (perm == 'ACCESS_TRANSFER') grant.privs.push(MarkerAccess.Transfer);
+						if (perm == 'ACCESS_WITHDRAW') grant.privs.push(MarkerAccess.Withdraw);
+					});
+
+					markerGrants.push(grant);
+				});
+
+				async.eachSeries(markerGrants, (grant: ProvenanceMarkerGrant, callback) => {
+					provenance.grantMarkerPrivs(denom, grant.key, grant.privs, from).then(() => {
+						callback();
+					}).catch((err) => {
+						callback(err);
+					});
+				}, (err) => {
+					if (err) {
+						reject(err);
+					} else {
+						provenance.getMarker(denom).then((marker) => {
+							Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+								ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
+								RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.Markers);
+							});
+							resolve(marker);
+						}).catch((err) => {
+							reject(err);
+						});
+					}
+				});
+			});
 		});
 	});
 

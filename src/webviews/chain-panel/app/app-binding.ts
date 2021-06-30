@@ -36,7 +36,9 @@ export enum Command {
     CreateMarkerRequest = "create-marker-request",
     CreateMarkerResponse = "create-marker-response",
     DeleteMarkerRequest = "delete-marker-request",
-    DeleteMarkerResponse = "delete-marker-response"
+    DeleteMarkerResponse = "delete-marker-response",
+    GrantMarkerPrivsRequest = "grant-marker-privs-request",
+    GrantMarkerPrivsResponse = "grant-marker-privs-response"
 }
 
 export interface Event {
@@ -165,6 +167,25 @@ export interface DeleteMarkerRequestEvent extends EventData {
 export interface DeleteMarkerResponseEvent extends EventData {
     id: string,
     result: DeleteMarkerResult,
+    error: Error
+}
+
+export enum GrantMarkerPrivsResult {
+    Success = 'success',
+    Error = 'error'
+}
+
+export interface GrantMarkerPrivsRequestEvent extends EventData {
+    id: string,
+    denom: string,
+    grants: ProvenanceMarkerAccessControl[],
+    from: string
+}
+
+export interface GrantMarkerPrivsResponseEvent extends EventData {
+    id: string,
+    result: GrantMarkerPrivsResult,
+    data: (ProvenanceMarker | undefined),
     error: Error
 }
 
@@ -347,6 +368,20 @@ export class ChainViewAppBinding {
                     this.postDeleteMarkerResponseEvent(deleteMarkerReq.id, DeleteMarkerResult.Error, new Error('No request handler set.'));
                 }
             } break;
+
+            case Command.GrantMarkerPrivsRequest: {
+                const grantMarkerPrivsReq = event.data as GrantMarkerPrivsRequestEvent;
+                console.log(`Received request ${grantMarkerPrivsReq.id} to grant marker privs on ${grantMarkerPrivsReq.denom}`);
+                if (this.onGrantMarkerPrivsRequestHandler) {
+                    this.onGrantMarkerPrivsRequestHandler(grantMarkerPrivsReq.denom, grantMarkerPrivsReq.grants, grantMarkerPrivsReq.from, (result: ProvenanceMarker) => {
+                        this.postGrantMarkerPrivsResponseEvent(grantMarkerPrivsReq.id, GrantMarkerPrivsResult.Success, result, undefined);
+                    }, (err: Error) => {
+                        this.postGrantMarkerPrivsResponseEvent(grantMarkerPrivsReq.id, GrantMarkerPrivsResult.Error, undefined, err);
+                    });
+                } else {
+                    this.postGrantMarkerPrivsResponseEvent(grantMarkerPrivsReq.id, GrantMarkerPrivsResult.Error, undefined, new Error('No request handler set.'));
+                }
+            } break;
         }
     }
 
@@ -418,6 +453,14 @@ export class ChainViewAppBinding {
                 console.dir(deleteMarkerResponseEvent);
                 if (deleteMarkerResponseEvent.id in this.responseHandlers) {
                     this.responseHandlers[deleteMarkerResponseEvent.id](deleteMarkerResponseEvent);
+                }
+            } break;
+
+            case Command.GrantMarkerPrivsResponse: {
+                const grantMarkerPrivsResponseEvent: GrantMarkerPrivsResponseEvent = event.data as GrantMarkerPrivsResponseEvent;
+                console.dir(grantMarkerPrivsResponseEvent);
+                if (grantMarkerPrivsResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[grantMarkerPrivsResponseEvent.id](grantMarkerPrivsResponseEvent);
                 }
             } break;
         }
@@ -632,6 +675,39 @@ export class ChainViewAppBinding {
         });
     }
 
+    onGrantMarkerPrivsRequest(handler: ((denom: string, grants: ProvenanceMarkerAccessControl[], from: string,resolve: ((result: ProvenanceMarker) => void), reject: ((err: Error) => void)) => void)) {
+        this.onGrantMarkerPrivsRequestHandler = handler;
+    }
+    private onGrantMarkerPrivsRequestHandler: ((denom: string, grants: ProvenanceMarkerAccessControl[], from: string,resolve: ((result: ProvenanceMarker) => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public grantMarkerPrivs(denom: string, grants: ProvenanceMarkerAccessControl[], from: string): Promise<(ProvenanceMarker | undefined)> {
+        return new Promise<(ProvenanceMarker | undefined)>((resolve, reject) => {
+            if (this._vscode) {
+                const grantMarkerPrivsReqData: GrantMarkerPrivsRequestEvent = {
+                    id: uuidv4(),
+                    denom: denom,
+                    grants: grants,
+                    from: from
+                };
+                const grantMarkerPrivsReqMessage: Event = {
+                    command: Command.GrantMarkerPrivsRequest,
+                    data: grantMarkerPrivsReqData
+                };
+                this.registerResponse(grantMarkerPrivsReqData.id, (eventData: EventData) => {
+                    const grantMarkerPrivsResMessage = eventData as GrantMarkerPrivsResponseEvent;
+                    if (grantMarkerPrivsResMessage.result == GrantMarkerPrivsResult.Success) {
+                        resolve(grantMarkerPrivsResMessage.data);
+                    } else {
+                        reject(grantMarkerPrivsResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(grantMarkerPrivsReqMessage);
+            } else {
+                reject(new Error('Cannot execute `grantMarkerPrivs` from VSCode'));
+            }
+        });
+    }
+
     public static getCodeInstance(webview: vscode.Webview): ChainViewAppBinding {
         if (!ChainViewAppBinding.instance) {
             ChainViewAppBinding.instance = new ChainViewAppBinding();
@@ -760,6 +836,21 @@ export class ChainViewAppBinding {
                 data: {
                     id: id,
                     result: result,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postGrantMarkerPrivsResponseEvent(id: string, result: GrantMarkerPrivsResult, data: (ProvenanceMarker | undefined), error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.GrantMarkerPrivsResponse,
+                data: {
+                    id: id,
+                    result: result,
+                    data: data,
                     error: error
                 }
             };
