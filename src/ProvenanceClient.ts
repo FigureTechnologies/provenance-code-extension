@@ -858,15 +858,16 @@ export class Provenance {
 		return promise;
 	}
 
-	grantMarkerPriv(denom: string, key: string, priv: MarkerAccess): Promise<void> {
+	grantMarkerPriv(denom: string, key: string, priv: MarkerAccess, admin: string): Promise<void> {
 		// reload the settings
 		this.loadSettings();
 
 		const key_addr = this.getAddressForKey(key);
+		const admin_addr = this.getAddressForKey(admin);
 
 		// use the manager signing key
 		var overrides: {[k: string]: any} = {};
-		overrides[ProvenanceClientFlags.From] = key_addr;
+		overrides[ProvenanceClientFlags.From] = admin_addr;
 
 		// build the command
 		const command = this.buildCommand([
@@ -904,10 +905,10 @@ export class Provenance {
 		return promise;
 	}
 
-	grantMarkerPrivs(denom: string, key: string, privs: MarkerAccess[]): Promise<void> {
+	grantMarkerPrivs(denom: string, key: string, privs: MarkerAccess[], admin: string): Promise<void> {
 		return new Promise<void>((resolve, reject) => {
 			async.eachSeries(privs, (priv: MarkerAccess, callback) => {
-				this.grantMarkerPriv(denom, key, priv).then(() => {
+				this.grantMarkerPriv(denom, key, priv, admin).then(() => {
 					callback();
 				}).catch((err) => {
 					callback(err);
@@ -1018,7 +1019,7 @@ export class Provenance {
 				},
 				(callback) => {
 					async.eachSeries(grants, (grant: ProvenanceMarkerGrant, series_callback) => {
-						this.grantMarkerPrivs(denom, grant.key, grant.privs).then(() => {
+						this.grantMarkerPrivs(denom, grant.key, grant.privs, manager).then(() => {
 							series_callback();
 						}).catch((err) => {
 							series_callback(err);

@@ -69,6 +69,7 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
                                 return perm == 'ACCESS_DELETE';
                             }) != undefined;
                         });
+
                         if(deleter != undefined) {
                             Utils.deleteMarker(m.denom, deleter.address).catch((err) => {
                                 Utils.showAlert(Alert.Danger, `Unable to delete marker "${m.denom}"`, err.message, true);
@@ -168,14 +169,14 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
                         </Card.Body>
                     </Card>
                 }
-                { isMarkerDetailsShown() && <MarkerDetailsView marker={this.state.markerDetails.marker}></MarkerDetailsView> }
+                { isMarkerDetailsShown() && <MarkerDetailsView accountKeys={keys} marker={this.state.markerDetails.marker}></MarkerDetailsView> }
                 <AddMarkerModal
                     show={this.state.addMarkerModalShown}
                     keys={keys}
                     onCancel={() => hideAddMarkerModal() }
                     onMarkerCreated={(marker) => { 
                         hideAddMarkerModal();
-                        Utils.showAlert(Alert.Success, `Created new marker "${marker.denom}"`, `???`, true);
+                        Utils.showAlert(Alert.Success, `Created new marker "${marker.denom}"`, `Created new marker "${marker.denom}" of type "${marker.marker_type}" with supply of ${marker.supply}`, true);
                     }}
                     onError={(err) => {
                         Utils.showAlert(Alert.Danger, `Unable to create new marker`, err.message, true);
