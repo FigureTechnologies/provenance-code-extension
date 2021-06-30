@@ -106,7 +106,7 @@ export class App extends React.Component<AppProps, AppState> {
                 <Container className="rootContainer" fluid>
                     {this.state.activeView == ACCOUNTS_VIEW && <ProvenanceAccountsView appBinding={this.appBinding} accountKeys={this.state.keys}></ProvenanceAccountsView>}
                     {this.state.activeView == BANK_VIEW && <ProvenanceBankView></ProvenanceBankView>}
-                    {this.state.activeView == MARKERS_VIEW && <ProvenanceMarkersView appBinding={this.appBinding} markers={this.state.markers}></ProvenanceMarkersView>}
+                    {this.state.activeView == MARKERS_VIEW && <ProvenanceMarkersView appBinding={this.appBinding} accountKeys={this.state.keys} markers={this.state.markers}></ProvenanceMarkersView>}
                 </Container>
                 <Container className="alertContainer" style={{maxWidth: "initial"}}>
                     {this.state.alerts.map((alert, idx) => 

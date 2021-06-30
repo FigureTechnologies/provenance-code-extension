@@ -21,6 +21,7 @@ export interface ProvenanceMarkerConfig {
 	denom: string,
 	supply: number,
 	manager: string,
+	type: string,
 	grants: ProvenanceMarkerGrant[]
 }
 
@@ -101,6 +102,11 @@ export enum MarkerAccess {
     Mint = 'mint',
     Transfer = 'transfer',
     Withdraw = 'withdraw'
+}
+
+export enum MarkerType {
+	Coin = 'COIN',
+	Restricted = 'RESTRICTED'
 }
 
 export interface MarkerBaseAccount {
@@ -800,7 +806,7 @@ export class Provenance {
 		});
 	}
 
-	newMarker(denom: string, supply: number, manager: string): Promise<void> {
+	newMarker(denom: string, supply: number, manager: string, type: MarkerType): Promise<void> {
 		// reload the settings
 		this.loadSettings();
 
@@ -814,7 +820,7 @@ export class Provenance {
 			TransactionCommand.Marker, 
 			MarkerTransactionCommand.New, 
 			`${supply}${denom}`,
-			'--type COIN'
+			`--type ${type}`
 		], overrides, {}, true);
 
 		const promise = new Promise<void>((resolve, reject) => {
@@ -991,11 +997,11 @@ export class Provenance {
 		return promise;
 	}
 
-	createMarker(denom: string, supply: number, manager: string, grants: ProvenanceMarkerGrant[]): Promise<Marker> {
+	createMarker(denom: string, supply: number, manager: string, type: MarkerType, grants: ProvenanceMarkerGrant[]): Promise<Marker> {
 		return new Promise<Marker>((resolve, reject) => {
 			async.series([
 				(callback) => {
-					this.newMarker(denom, supply, manager).then(() => {
+					this.newMarker(denom, supply, manager, type).then(() => {
 						callback();
 					}).catch((err) => {
 						callback(err);

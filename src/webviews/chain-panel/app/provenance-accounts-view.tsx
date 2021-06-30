@@ -200,7 +200,6 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
                         Utils.showAlert(Alert.Success, `Recovered key "${key.name}" from mnemonic`, `Address: ${key.address}\nPublic key: ${key.pubkey}`, true);
                     }}
                     onError={(err) => {
-                        hideRecoverKeyModal();
                         Utils.showAlert(Alert.Danger, `Unable to recover key from mnemonic`, err.message, true);
                     }}
                 ></RecoverKeyModal>
@@ -212,7 +211,6 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
                         Utils.showAlert(Alert.Success, `Created new key "${key.name}"`, `**Important** write this mnemonic phrase in a safe place.\nIt is the only way to recover your account if you ever forget your password.\n\n${key.mnemonic}`, true);
                     }}
                     onError={(err) => {
-                        hideAddKeyModal();
                         Utils.showAlert(Alert.Danger, `Unable to create new key`, err.message, true);
                     }}
                 ></AddKeyModal>
