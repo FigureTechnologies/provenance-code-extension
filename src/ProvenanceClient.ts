@@ -263,6 +263,7 @@ enum MarkerTransactionCommand {
 	Grant = "grant",
 	Mint = "mint",
 	New = "new",
+	Revoke = "revoke",
 	Withdraw = "withdraw"
 }
 
@@ -867,7 +868,7 @@ export class Provenance {
 		const key_addr = this.getAddressForKey(key);
 		const admin_addr = this.getAddressForKey(admin);
 
-		// use the manager signing key
+		// use the admin signing key
 		var overrides: {[k: string]: any} = {};
 		overrides[ProvenanceClientFlags.From] = admin_addr;
 
@@ -921,6 +922,50 @@ export class Provenance {
 				} else {
 					resolve();
 				}
+			});
+		});
+	}
+
+	revokeMarkerPrivs(denom: string, key: string, admin: string): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			// reload the settings
+			this.loadSettings();
+
+			const key_addr = this.getAddressForKey(key);
+			const admin_addr = this.getAddressForKey(admin);
+
+			// use the admin signing key
+			var overrides: {[k: string]: any} = {};
+			overrides[ProvenanceClientFlags.From] = admin_addr;
+
+			// build the command
+			const command = this.buildCommand([
+				ProvenanceCommand.TX, 
+				TransactionCommand.Marker, 
+				MarkerTransactionCommand.Revoke, 
+				key_addr,
+				denom
+			], overrides, {}, true);
+
+			let marker_revoked = false;
+			Utils.runCommand(command, (out: string) => {
+				var result = JSON.parse(out);
+	
+				result.logs.forEach((log: ProvenanceLog) => {
+					log.events.forEach((event: ProvenanceLogEvent) => {
+						if (event.type == 'provenance.marker.v1.EventMarkerDeleteAccess') {
+							marker_revoked = true;
+						}
+					});
+				});
+			}).then (() => {
+				if (marker_revoked) {
+					resolve();
+				} else {
+					reject(new Error(`Failed to revoke grant for key ${key} on marker ${denom}`));
+				}
+			}).catch((err) => {
+				reject(new Error(`Failed to revoke grant for key ${key} on marker ${denom}`));
 			});
 		});
 	}

@@ -582,6 +582,24 @@ export function activate(context: vscode.ExtensionContext) {
 				});
 			});
 
+			chainViewApp.onRevokeMarkerPrivsRequest((denom: string, address: string, from: string, resolve: ((result: ProvenanceMarker) => void), reject: ((err: Error) => void)) => {
+				console.log('onRevokeMarkerPrivsRequest');
+
+				provenance.revokeMarkerPrivs(denom, address, from).then(() => {
+					provenance.getMarker(denom).then((marker) => {
+						Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+							ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
+							RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.Markers);
+						});
+						resolve(marker);
+					}).catch((err) => {
+						reject(err);
+					});
+				}).catch((err) => {
+					reject(err);
+				})
+			});
+
 			chainViewApp.onMintMarkerCoinsRequest((denom: string, amount: number, from: string, resolve: (() => void), reject: ((err: Error) => void)) => {
 				console.log('onMintMarkerCoinsRequest');
 

@@ -34,6 +34,11 @@ export class Utils {
         return appBinding.grantMarkerPrivs(denom, access, from);
     }
 
+    static revokeMarkerPrivs (denom: string, address: string, from: string): Promise<(ProvenanceMarker | undefined)> {
+        const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();
+        return appBinding.revokeMarkerPrivs(denom, address, from);
+    }
+
     static mintCoin (denom: string, amount: number, minter: string): Promise<void> {
         const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();
         return appBinding.mintCoin(denom, amount, minter);

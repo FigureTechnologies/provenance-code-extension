@@ -1,7 +1,8 @@
 import * as React from "react";
 import './marker-details-view.scss';
-import { FaPlus } from 'react-icons/fa';
+import { FaMinusSquare, FaPlus } from 'react-icons/fa';
 import { Button, Card, Col, Container, OverlayTrigger, Row, Tooltip } from 'react-bootstrap';
+import Dialog from 'react-bootstrap-dialog';
 import { Alert } from './app-binding';
 import { ProvenanceKey } from './provenance-key';
 import { ProvenanceMarker } from './provenance-marker';
@@ -30,9 +31,43 @@ export default class MarkerDetailsView extends React.Component<MarkerDetailsView
         }
     }
 
+    confirmRevokeAccessDialog: Dialog;
+
     render() {
         const marker = this.state.marker;
         const keys = this.props.accountKeys;
+
+        const revokeAccess = (a) => {
+            this.confirmRevokeAccessDialog.show({
+                title: 'Confirm revoke access',
+                body: `Are you sure you want to revoke access for "${a}" on the marker "${marker.denom}"?`,
+                bsSize: 'small',
+                actions: [
+                    Dialog.OKAction(() => {
+                        // find account with admin permissions
+                        const admin = marker.access_control.find((access) => {
+                            return access.permissions.find((perm) => {
+                                return perm == 'ACCESS_ADMIN';
+                            }) != undefined;
+                        });
+
+                        if(admin != undefined) {
+                            Utils.revokeMarkerPrivs(marker.denom, a, admin.address).then((marker) => {
+                                this.setState({
+                                    marker: marker
+                                });
+                                Utils.showAlert(Alert.Success, `Revoked privileges on marker "${marker.denom}"`, `Revoked privileges for ${a} on marker ${marker.denom}`, true);
+                            }).catch((err) => {
+                                Utils.showAlert(Alert.Danger, `Unable to revoke access for marker "${marker.denom}"`, err.message, true);
+                            });
+                        } else {
+                            Utils.showAlert(Alert.Danger, `Unable to revoke privileges on marker`, `Failed to locate an account with ACCESS_ADMIN privileges to revoke privileges on marker "${marker.denom}".`, true);
+                        }
+                    }),
+                    Dialog.CancelAction()
+                ]
+            });
+        };
 
         const showAddMarkerAccessModal = () => {
             this.setState({
@@ -47,7 +82,11 @@ export default class MarkerDetailsView extends React.Component<MarkerDetailsView
         };
 
         const renderAddMarkerAccessTooltip = (props) => (
-            <Tooltip id="button-tooltip" {...props}>Add access</Tooltip>
+            <Tooltip id="add-button-tooltip" {...props}>Add access</Tooltip>
+        );
+
+        const renderRevokeAccessTooltip = (props) => (
+            <Tooltip id="revoke-button-tooltip" {...props}>Revoke access</Tooltip>
         );
 
         return (
@@ -105,13 +144,25 @@ export default class MarkerDetailsView extends React.Component<MarkerDetailsView
                                 <Container>
                                     <Row>
                                         <Col sm={3}>Address:</Col>
-                                        <Col sm={9} className="markerDetailsField">{access.address} ({Utils.getKeyForAddress(keys, access.address) != undefined ? Utils.getKeyForAddress(keys, access.address).name : "unknown"})</Col>
+                                        <Col sm={8} className="markerDetailsField">
+                                            {access.address} ({Utils.getKeyForAddress(keys, access.address) != undefined ? Utils.getKeyForAddress(keys, access.address).name : "unknown"})
+                                        </Col>
+                                        <Col sm={1} className="text-right">
+                                        <OverlayTrigger
+                                                    placement="bottom"
+                                                    delay={{ show: 250, hide: 400 }}
+                                                    overlay={renderRevokeAccessTooltip}
+                                            >
+                                                <span className="accessControlAction"><a href="#" className="actions" onClick={() => revokeAccess(access.address)}><FaMinusSquare /></a></span>
+                                            </OverlayTrigger>
+                                        </Col>
                                     </Row>
                                     <Row>
                                         <Col sm={3}>Permissions:</Col>
-                                        <Col sm={9} className="markerDetailsField">{access.permissions.map((perm, idx) => 
+                                        <Col sm={8} className="markerDetailsField">{access.permissions.map((perm, idx) => 
                                             <div>{perm}</div>
                                         )}</Col>
+                                        <Col sm={1}></Col>
                                     </Row>
                                 </Container>
                             </div>
@@ -134,6 +185,7 @@ export default class MarkerDetailsView extends React.Component<MarkerDetailsView
                         Utils.showAlert(Alert.Danger, `Unable to grant privileges on marker "${marker.denom}"`, err.message, true);
                     }}
                 ></AddMarkerAccessModal>
+                <Dialog ref={(el) => { this.confirmRevokeAccessDialog = el }} />
             </React.Fragment>
         );
     }
