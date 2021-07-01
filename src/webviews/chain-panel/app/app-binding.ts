@@ -39,6 +39,8 @@ export enum Command {
     DeleteMarkerResponse = "delete-marker-response",
     GrantMarkerPrivsRequest = "grant-marker-privs-request",
     GrantMarkerPrivsResponse = "grant-marker-privs-response",
+    RevokeMarkerPrivsRequest = "revoke-marker-privs-request",
+    RevokeMarkerPrivsResponse = "revoke-marker-privs-response",
     MintMarkerCoinsRequest = "mint-marker-coins-request",
     MintMarkerCoinsResponse = "mint-marker-coins-response",
     BurnMarkerCoinsRequest = "burn-marker-coins-request",
@@ -157,6 +159,20 @@ export interface GrantMarkerPrivsRequestEvent extends EventData {
 }
 
 export interface GrantMarkerPrivsResponseEvent extends EventData {
+    id: string,
+    result: CommandResult,
+    data: (ProvenanceMarker | undefined),
+    error: Error
+}
+
+export interface RevokeMarkerPrivsRequestEvent extends EventData {
+    id: string,
+    denom: string,
+    address: string,
+    from: string
+}
+
+export interface RevokeMarkerPrivsResponseEvent extends EventData {
     id: string,
     result: CommandResult,
     data: (ProvenanceMarker | undefined),
@@ -385,6 +401,20 @@ export class ChainViewAppBinding {
                 }
             } break;
 
+            case Command.RevokeMarkerPrivsRequest: {
+                const revokeMarkerPrivsReq = event.data as RevokeMarkerPrivsRequestEvent;
+                console.log(`Received request ${revokeMarkerPrivsReq.id} to revoke marker privs for ${revokeMarkerPrivsReq.address} on ${revokeMarkerPrivsReq.denom}`);
+                if (this.onRevokeMarkerPrivsRequestHandler) {
+                    this.onRevokeMarkerPrivsRequestHandler(revokeMarkerPrivsReq.denom, revokeMarkerPrivsReq.address, revokeMarkerPrivsReq.from, (result: ProvenanceMarker) => {
+                        this.postRevokeMarkerPrivsResponseEvent(revokeMarkerPrivsReq.id, CommandResult.Success, result, undefined);
+                    }, (err: Error) => {
+                        this.postRevokeMarkerPrivsResponseEvent(revokeMarkerPrivsReq.id, CommandResult.Error, undefined, err);
+                    });
+                } else {
+                    this.postRevokeMarkerPrivsResponseEvent(revokeMarkerPrivsReq.id, CommandResult.Error, undefined, new Error('No request handler set.'));
+                }
+            } break;
+
             case Command.MintMarkerCoinsRequest: {
                 const mintMarkerCoinsReq = event.data as MintMarkerCoinsRequestEvent;
                 console.log(`Received request ${mintMarkerCoinsReq.id} to mint ${mintMarkerCoinsReq.amount} marker coins for ${mintMarkerCoinsReq.denom}`);
@@ -491,6 +521,14 @@ export class ChainViewAppBinding {
                 console.dir(grantMarkerPrivsResponseEvent);
                 if (grantMarkerPrivsResponseEvent.id in this.responseHandlers) {
                     this.responseHandlers[grantMarkerPrivsResponseEvent.id](grantMarkerPrivsResponseEvent);
+                }
+            } break;
+
+            case Command.RevokeMarkerPrivsResponse: {
+                const revokeMarkerPrivsResponseEvent: RevokeMarkerPrivsResponseEvent = event.data as RevokeMarkerPrivsResponseEvent;
+                console.dir(revokeMarkerPrivsResponseEvent);
+                if (revokeMarkerPrivsResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[revokeMarkerPrivsResponseEvent.id](revokeMarkerPrivsResponseEvent);
                 }
             } break;
 
@@ -754,6 +792,39 @@ export class ChainViewAppBinding {
         });
     }
 
+    onRevokeMarkerPrivsRequest(handler: ((denom: string, address: string, from: string,resolve: ((result: ProvenanceMarker) => void), reject: ((err: Error) => void)) => void)) {
+        this.onRevokeMarkerPrivsRequestHandler = handler;
+    }
+    private onRevokeMarkerPrivsRequestHandler: ((denom: string, address: string, from: string,resolve: ((result: ProvenanceMarker) => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public revokeMarkerPrivs(denom: string, address: string, from: string): Promise<(ProvenanceMarker | undefined)> {
+        return new Promise<(ProvenanceMarker | undefined)>((resolve, reject) => {
+            if (this._vscode) {
+                const revokeMarkerPrivsReqData: RevokeMarkerPrivsRequestEvent = {
+                    id: uuidv4(),
+                    denom: denom,
+                    address: address,
+                    from: from
+                };
+                const revokeMarkerPrivsReqMessage: Event = {
+                    command: Command.RevokeMarkerPrivsRequest,
+                    data: revokeMarkerPrivsReqData
+                };
+                this.registerResponse(revokeMarkerPrivsReqData.id, (eventData: EventData) => {
+                    const revokeMarkerPrivsResMessage = eventData as RevokeMarkerPrivsResponseEvent;
+                    if (revokeMarkerPrivsResMessage.result == CommandResult.Success) {
+                        resolve(revokeMarkerPrivsResMessage.data);
+                    } else {
+                        reject(revokeMarkerPrivsResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(revokeMarkerPrivsReqMessage);
+            } else {
+                reject(new Error('Cannot execute `revokeMarkerPrivs` from VSCode'));
+            }
+        });
+    }
+
     onMintMarkerCoinsRequest(handler: ((denom: string, amount: number, from: string, resolve: (() => void), reject: ((err: Error) => void)) => void)) {
         this.onMintMarkerCoinsRequestHandler = handler;
     }
@@ -959,6 +1030,21 @@ export class ChainViewAppBinding {
         if (this._webview) {
             let event: Event = {
                 command: Command.GrantMarkerPrivsResponse,
+                data: {
+                    id: id,
+                    result: result,
+                    data: data,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postRevokeMarkerPrivsResponseEvent(id: string, result: CommandResult, data: (ProvenanceMarker | undefined), error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.RevokeMarkerPrivsResponse,
                 data: {
                     id: id,
                     result: result,
