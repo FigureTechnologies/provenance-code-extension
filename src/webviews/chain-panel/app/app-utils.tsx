@@ -34,6 +34,16 @@ export class Utils {
         return appBinding.grantMarkerPrivs(denom, access, from);
     }
 
+    static mintCoin (denom: string, amount: number, minter: string): Promise<void> {
+        const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();
+        return appBinding.mintCoin(denom, amount, minter);
+    }
+
+    static burnCoin (denom: string, amount: number, burner: string): Promise<void> {
+        const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();
+        return appBinding.burnCoin(denom, amount, burner);
+    }
+
     static showAlert (type: Alert, title: string, body: string, dismissable: boolean): Promise<void> {
         return new Promise<void>((resolve, reject) => {
             const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();

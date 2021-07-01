@@ -1,6 +1,6 @@
 import * as React from "react";
 import './provenance-markers-view.scss';
-import { FaPlus, FaTrashAlt } from 'react-icons/fa';
+import { FaPlus, FaTrashAlt, FaCoins, FaFireAlt } from 'react-icons/fa';
 import Dialog from 'react-bootstrap-dialog';
 
 import { Breadcrumb, Button, Card, OverlayTrigger, Table, Tooltip } from 'react-bootstrap';
@@ -11,6 +11,7 @@ import { Utils } from './app-utils';
 
 import MarkerDetailsView from './marker-details-view';
 import AddMarkerModal from './add-marker-modal';
+import { MintOrBurnMarkerModal, MintOrBurnMode } from './mint-or-burn-marker-modal';
 
 interface ProvenanceMarkerDetails {
     marker: ProvenanceMarker
@@ -24,7 +25,10 @@ interface ProvenanceMarkersViewProps {
 
 interface ProvenanceMarkersViewState {
     markerDetails: (ProvenanceMarkerDetails | undefined),
-    addMarkerModalShown: boolean
+    addMarkerModalShown: boolean,
+    mintOrBurnMarkerModalShown: boolean,
+    mintOrBurnMarker: ProvenanceMarker,
+    mintOrBurnMode: MintOrBurnMode
 }
 
 export default class ProvenanceMarkersView extends React.Component<ProvenanceMarkersViewProps, ProvenanceMarkersViewState> {
@@ -34,7 +38,10 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
 
         this.state = {
             markerDetails: undefined,
-            addMarkerModalShown: false
+            addMarkerModalShown: false,
+            mintOrBurnMarkerModalShown: false,
+            mintOrBurnMarker: undefined,
+            mintOrBurnMode: MintOrBurnMode.Mint
         };
     }
 
@@ -83,6 +90,14 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
             });
         };
 
+        const mintMarkerCoins = (m) => {
+            showMintOrBurnMarkerModal(m, MintOrBurnMode.Mint);
+        };
+
+        const burnMarkerCoins = (m) => {
+            showMintOrBurnMarkerModal(m, MintOrBurnMode.Burn);
+        };
+
         const goHome = () => {
             this.setState({
                 markerDetails: undefined
@@ -101,8 +116,30 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
             });
         };
 
+        const showMintOrBurnMarkerModal = (marker: ProvenanceMarker, mode: MintOrBurnMode) => {
+            this.setState({
+                mintOrBurnMarkerModalShown: true,
+                mintOrBurnMarker: marker,
+                mintOrBurnMode: mode
+            });
+        };
+
+        const hideMintOrBurnMarkerModal = () => {
+            this.setState({
+                mintOrBurnMarkerModalShown: false
+            });
+        };
+
         const renderAddMarkerTooltip = (props) => (
             <Tooltip id="button-tooltip" {...props}>New marker</Tooltip>
+        );
+
+        const renderMintMarkerTooltip = (props) => (
+            <Tooltip id="mint-button-tooltip" {...props}>Mint marker coins</Tooltip>
+        );
+
+        const renderBurnMarkerTooltip = (props) => (
+            <Tooltip id="burn-button-tooltip" {...props}>Burn marker coins</Tooltip>
         );
 
         const renderDeleteMarkerTooltip = (props) => (
@@ -154,12 +191,26 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
                                             <td>{marker.supply} {marker.supply_fixed && <span>(fixed)</span>}</td>
                                             <td>{marker.marker_type}</td>
                                             <td>
+                                                {!marker.supply_fixed && <OverlayTrigger
+                                                    placement="bottom"
+                                                    delay={{ show: 250, hide: 400 }}
+                                                    overlay={renderMintMarkerTooltip}
+                                                >
+                                                    <span className="markerAction"><a href="#" className="actions" onClick={() => mintMarkerCoins(marker)}><FaCoins /></a></span>
+                                                </OverlayTrigger>}
+                                                {!marker.supply_fixed && <OverlayTrigger
+                                                    placement="bottom"
+                                                    delay={{ show: 250, hide: 400 }}
+                                                    overlay={renderBurnMarkerTooltip}
+                                                >
+                                                    <span className="markerAction"><a href="#" className="actions" onClick={() => burnMarkerCoins(marker)}><FaFireAlt /></a></span>
+                                                </OverlayTrigger>}
                                                 {marker.denom != "nhash" && <OverlayTrigger
-                                                    placement="right"
+                                                    placement="bottom"
                                                     delay={{ show: 250, hide: 400 }}
                                                     overlay={renderDeleteMarkerTooltip}
                                                 >
-                                                    <a href="#" className="actions" onClick={() => deleteMarker(marker)}><FaTrashAlt /></a>
+                                                    <span className="markerAction"><a href="#" className="actions" onClick={() => deleteMarker(marker)}><FaTrashAlt /></a></span>
                                                 </OverlayTrigger>}
                                             </td>
                                         </tr>
@@ -182,6 +233,24 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
                         Utils.showAlert(Alert.Danger, `Unable to create new marker`, err.message, true);
                     }}
                 ></AddMarkerModal>
+                <MintOrBurnMarkerModal
+                    show={this.state.mintOrBurnMarkerModalShown}
+                    keys={keys}
+                    marker={this.state.mintOrBurnMarker}
+                    mode={this.state.mintOrBurnMode}
+                    onCancel={() => hideMintOrBurnMarkerModal() }
+                    onMarkerMinted={(marker, total) => {
+                        hideMintOrBurnMarkerModal();
+                        Utils.showAlert(Alert.Success, `Successfully minted marker coins`, `Minted ${total} ${marker.denom} coins`, true);
+                    }}
+                    onMarkerBurned={(marker, total) => {
+                        hideMintOrBurnMarkerModal();
+                        Utils.showAlert(Alert.Success, `Successfully burned marker coins`, `Burned ${total} ${marker.denom} coins`, true);
+                    }}
+                    onError={(err) => {
+                        Utils.showAlert(Alert.Danger, `Unable to ${(this.state.mintOrBurnMode == MintOrBurnMode.Mint) ? "mint" : "burn"} marker coin`, err.message, true);
+                    }}
+                ></MintOrBurnMarkerModal>
                 <Dialog ref={(el) => { this.confirmDeleteDialog = el }} />
             </React.Fragment>
         );
