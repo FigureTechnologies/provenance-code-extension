@@ -26,7 +26,7 @@ interface AddMarkerModalProps {
     show: boolean,
     keys: ProvenanceKey[],
     onCancel: (() => void),
-    onMarkerCreated: ((key: ProvenanceMarker) => void)
+    onMarkerCreated: ((marker: ProvenanceMarker) => void),
     onError: ((err: Error) => void)
 }
 
@@ -163,7 +163,7 @@ export default class AddMarkerModal extends React.Component<AddMarkerModalProps,
                 validationInfo.error = "Marker supply must be numeric";
             } else if (value.length == 0) {
                 validationInfo.isValid = false;
-                validationInfo.error = "Marker denom required";
+                validationInfo.error = "Marker supply required";
             }
 
             this.setState({

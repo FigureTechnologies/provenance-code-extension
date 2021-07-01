@@ -256,10 +256,12 @@ enum WASMContractStateCommand {
 
 enum MarkerTransactionCommand {
 	Activate = "activate",
+	Burn = "burn",
 	Cancel = "cancel",
 	Destroy = "destroy",
 	Finalize = "finalize",
 	Grant = "grant",
+	Mint = "mint",
 	New = "new",
 	Withdraw = "withdraw"
 }
@@ -1169,6 +1171,86 @@ export class Provenance {
 				});
 			}).catch((err) => {
 				reject(err);
+			});
+		});
+	}
+
+	mintCoin(denom: string, amount: number, sender: string): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			// reload the settings
+			this.loadSettings();
+
+			// use the sender signing key
+			var overrides: {[k: string]: any} = {};
+			overrides[ProvenanceClientFlags.From] = this.getAddressForKey(sender);
+
+			// build the command
+			const command = this.buildCommand([
+				ProvenanceCommand.TX, 
+				TransactionCommand.Marker, 
+				MarkerTransactionCommand.Mint, 
+				`${amount}${denom}`
+			], overrides, {}, true);
+
+			let coin_minted = false;
+			Utils.runCommand(command, (out: string) => {
+				var result = JSON.parse(out);
+	
+				result.logs.forEach((log: ProvenanceLog) => {
+					log.events.forEach((event: ProvenanceLogEvent) => {
+						if (event.type == 'provenance.marker.v1.EventMarkerMint') {
+							coin_minted = true;
+						}
+					});
+				});
+			}).then (() => {
+				if (coin_minted) {
+					resolve();
+				} else {
+					reject(new Error(`Failed to mint coin ${amount} ${denom}`));
+				}
+			}).catch((err) => {
+				reject(new Error(`Failed to mint coin ${amount} ${denom}`));
+			});
+		});
+	}
+
+	burnCoin(denom: string, amount: number, sender: string): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			// reload the settings
+			this.loadSettings();
+
+			// use the sender signing key
+			var overrides: {[k: string]: any} = {};
+			overrides[ProvenanceClientFlags.From] = this.getAddressForKey(sender);
+
+			// build the command
+			const command = this.buildCommand([
+				ProvenanceCommand.TX, 
+				TransactionCommand.Marker, 
+				MarkerTransactionCommand.Burn, 
+				`${amount}${denom}`
+			], overrides, {}, true);
+
+			let coin_minted = false;
+			Utils.runCommand(command, (out: string) => {
+				var result = JSON.parse(out);
+	
+				result.logs.forEach((log: ProvenanceLog) => {
+					log.events.forEach((event: ProvenanceLogEvent) => {
+						if (event.type == 'provenance.marker.v1.EventMarkerBurn') {
+							coin_minted = true;
+						}
+					});
+				});
+			}).then (() => {
+				if (coin_minted) {
+					resolve();
+				} else {
+					reject(new Error(`Failed to burn coin ${amount} ${denom}`));
+				}
+			}).catch((err) => {
+				reject(new Error(`Failed to burn coin ${amount} ${denom}`));
 			});
 		});
 	}

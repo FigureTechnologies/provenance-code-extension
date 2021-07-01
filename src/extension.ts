@@ -581,6 +581,37 @@ export function activate(context: vscode.ExtensionContext) {
 					}
 				});
 			});
+
+			chainViewApp.onMintMarkerCoinsRequest((denom: string, amount: number, from: string, resolve: (() => void), reject: ((err: Error) => void)) => {
+				console.log('onMintMarkerCoinsRequest');
+
+				provenance.mintCoin(denom, amount, from).then(() => {
+					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
+						RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.Markers);
+					});
+					console.log(`provenance.mintCoin.then`);
+					resolve();
+				}).catch((err) => {
+					vscode.window.showErrorMessage(err.message);
+					reject(err);
+				});
+			});
+
+			chainViewApp.onBurnMarkerCoinsRequest((denom: string, amount: number, from: string, resolve: (() => void), reject: ((err: Error) => void)) => {
+				console.log('onBurnMarkerCoinsRequest');
+
+				provenance.burnCoin(denom, amount, from).then(() => {
+					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
+						RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.Markers);
+					});
+					resolve();
+				}).catch((err) => {
+					vscode.window.showErrorMessage(err.message);
+					reject(err);
+				});
+			});
 		});
 	});
 

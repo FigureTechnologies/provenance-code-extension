@@ -38,7 +38,16 @@ export enum Command {
     DeleteMarkerRequest = "delete-marker-request",
     DeleteMarkerResponse = "delete-marker-response",
     GrantMarkerPrivsRequest = "grant-marker-privs-request",
-    GrantMarkerPrivsResponse = "grant-marker-privs-response"
+    GrantMarkerPrivsResponse = "grant-marker-privs-response",
+    MintMarkerCoinsRequest = "mint-marker-coins-request",
+    MintMarkerCoinsResponse = "mint-marker-coins-response",
+    BurnMarkerCoinsRequest = "burn-marker-coins-request",
+    BurnMarkerCoinsResponse = "burn-marker-coins-response"
+}
+
+export enum CommandResult {
+    Success = 'success',
+    Error = 'error'
 }
 
 export interface Event {
@@ -64,11 +73,6 @@ export interface DataChangeEvent extends EventData {
     value: any
 }
 
-export enum GetAccountBalancesResult {
-    Success = 'success',
-    Error = 'error'
-}
-
 export interface GetAccountBalancesRequestEvent extends EventData {
     id: string,
     addr: string
@@ -76,14 +80,9 @@ export interface GetAccountBalancesRequestEvent extends EventData {
 
 export interface GetAccountBalancesResponseEvent extends EventData {
     id: string,
-    result: GetAccountBalancesResult,
+    result: CommandResult,
     data: ProvenanceAccountBalance[],
     error: Error
-}
-
-export enum CreateKeyResult {
-    Success = 'success',
-    Error = 'error'
 }
 
 export interface CreateKeyRequestEvent extends EventData {
@@ -93,14 +92,9 @@ export interface CreateKeyRequestEvent extends EventData {
 
 export interface CreateKeyResponseEvent extends EventData {
     id: string,
-    result: CreateKeyResult,
+    result: CommandResult,
     data: (ProvenanceKey | undefined),
     error: Error
-}
-
-export enum RecoverKeyResult {
-    Success = 'success',
-    Error = 'error'
 }
 
 export interface RecoverKeyRequestEvent extends EventData {
@@ -111,14 +105,9 @@ export interface RecoverKeyRequestEvent extends EventData {
 
 export interface RecoverKeyResponseEvent extends EventData {
     id: string,
-    result: RecoverKeyResult,
+    result: CommandResult,
     data: (ProvenanceKey | undefined),
     error: Error
-}
-
-export enum DeleteKeyResult {
-    Success = 'success',
-    Error = 'error'
 }
 
 export interface DeleteKeyRequestEvent extends EventData {
@@ -128,13 +117,8 @@ export interface DeleteKeyRequestEvent extends EventData {
 
 export interface DeleteKeyResponseEvent extends EventData {
     id: string,
-    result: DeleteKeyResult,
+    result: CommandResult,
     error: Error
-}
-
-export enum CreateMarkerResult {
-    Success = 'success',
-    Error = 'error'
 }
 
 export interface CreateMarkerRequestEvent extends EventData {
@@ -148,14 +132,9 @@ export interface CreateMarkerRequestEvent extends EventData {
 
 export interface CreateMarkerResponseEvent extends EventData {
     id: string,
-    result: CreateMarkerResult,
+    result: CommandResult,
     data: (ProvenanceMarker | undefined),
     error: Error
-}
-
-export enum DeleteMarkerResult {
-    Success = 'success',
-    Error = 'error'
 }
 
 export interface DeleteMarkerRequestEvent extends EventData {
@@ -166,13 +145,8 @@ export interface DeleteMarkerRequestEvent extends EventData {
 
 export interface DeleteMarkerResponseEvent extends EventData {
     id: string,
-    result: DeleteMarkerResult,
+    result: CommandResult,
     error: Error
-}
-
-export enum GrantMarkerPrivsResult {
-    Success = 'success',
-    Error = 'error'
 }
 
 export interface GrantMarkerPrivsRequestEvent extends EventData {
@@ -184,7 +158,35 @@ export interface GrantMarkerPrivsRequestEvent extends EventData {
 
 export interface GrantMarkerPrivsResponseEvent extends EventData {
     id: string,
-    result: GrantMarkerPrivsResult,
+    result: CommandResult,
+    data: (ProvenanceMarker | undefined),
+    error: Error
+}
+
+export interface MintMarkerCoinsRequestEvent extends EventData {
+    id: string,
+    denom: string,
+    amount: number,
+    from: string
+}
+
+export interface MintMarkerCoinsResponseEvent extends EventData {
+    id: string,
+    result: CommandResult,
+    data: (ProvenanceMarker | undefined),
+    error: Error
+}
+
+export interface BurnMarkerCoinsRequestEvent extends EventData {
+    id: string,
+    denom: string,
+    amount: number,
+    from: string
+}
+
+export interface BurnMarkerCoinsResponseEvent extends EventData {
+    id: string,
+    result: CommandResult,
     data: (ProvenanceMarker | undefined),
     error: Error
 }
@@ -290,12 +292,12 @@ export class ChainViewAppBinding {
                 console.log(`Received request ${getActBalsReq.id} to get account balances for address ${getActBalsReq.addr}`);
                 if (this.onGetAccountBalancesRequestHandler) {
                     this.onGetAccountBalancesRequestHandler(getActBalsReq.addr, (result: ProvenanceAccountBalance[]) => {
-                        this.postGetAccountBalancesResponseEvent(getActBalsReq.id, GetAccountBalancesResult.Success, result, undefined);
+                        this.postGetAccountBalancesResponseEvent(getActBalsReq.id, CommandResult.Success, result, undefined);
                     }, (err: Error) => {
-                        this.postGetAccountBalancesResponseEvent(getActBalsReq.id, GetAccountBalancesResult.Error, [], err);
+                        this.postGetAccountBalancesResponseEvent(getActBalsReq.id, CommandResult.Error, [], err);
                     });
                 } else {
-                    this.postGetAccountBalancesResponseEvent(getActBalsReq.id, GetAccountBalancesResult.Error, [], new Error('No request handler set.'));
+                    this.postGetAccountBalancesResponseEvent(getActBalsReq.id, CommandResult.Error, [], new Error('No request handler set.'));
                 }
             } break;
 
@@ -304,12 +306,12 @@ export class ChainViewAppBinding {
                 console.log(`Received request ${createKeyReq.id} to create key with name ${createKeyReq.name}`);
                 if (this.onCreateKeyRequestHandler) {
                     this.onCreateKeyRequestHandler(createKeyReq.name, (result: ProvenanceKey) => {
-                        this.postCreateKeyResponseEvent(createKeyReq.id, CreateKeyResult.Success, result, undefined);
+                        this.postCreateKeyResponseEvent(createKeyReq.id, CommandResult.Success, result, undefined);
                     }, (err: Error) => {
-                        this.postCreateKeyResponseEvent(createKeyReq.id, CreateKeyResult.Error, undefined, err);
+                        this.postCreateKeyResponseEvent(createKeyReq.id, CommandResult.Error, undefined, err);
                     });
                 } else {
-                    this.postCreateKeyResponseEvent(createKeyReq.id, CreateKeyResult.Error, undefined, new Error('No request handler set.'));
+                    this.postCreateKeyResponseEvent(createKeyReq.id, CommandResult.Error, undefined, new Error('No request handler set.'));
                 }
             } break;
 
@@ -318,12 +320,12 @@ export class ChainViewAppBinding {
                 console.log(`Received request ${recoverKeyReq.id} to recover key ${recoverKeyReq.name} with mnemonic ${recoverKeyReq.mnemonic}`);
                 if (this.onRecoverKeyRequestHandler) {
                     this.onRecoverKeyRequestHandler(recoverKeyReq.name, recoverKeyReq.mnemonic, (result: ProvenanceKey) => {
-                        this.postRecoverKeyResponseEvent(recoverKeyReq.id, RecoverKeyResult.Success, result, undefined);
+                        this.postRecoverKeyResponseEvent(recoverKeyReq.id, CommandResult.Success, result, undefined);
                     }, (err: Error) => {
-                        this.postRecoverKeyResponseEvent(recoverKeyReq.id, RecoverKeyResult.Error, undefined, err);
+                        this.postRecoverKeyResponseEvent(recoverKeyReq.id, CommandResult.Error, undefined, err);
                     });
                 } else {
-                    this.postRecoverKeyResponseEvent(recoverKeyReq.id, RecoverKeyResult.Error, undefined, new Error('No request handler set.'));
+                    this.postRecoverKeyResponseEvent(recoverKeyReq.id, CommandResult.Error, undefined, new Error('No request handler set.'));
                 }
             } break;
 
@@ -332,12 +334,12 @@ export class ChainViewAppBinding {
                 console.log(`Received request ${deleteKeyReq.id} to delete key ${deleteKeyReq.name}`);
                 if (this.onDeleteKeyRequestHandler) {
                     this.onDeleteKeyRequestHandler(deleteKeyReq.name, () => {
-                        this.postDeleteKeyResponseEvent(deleteKeyReq.id, DeleteKeyResult.Success, undefined);
+                        this.postDeleteKeyResponseEvent(deleteKeyReq.id, CommandResult.Success, undefined);
                     }, (err: Error) => {
-                        this.postDeleteKeyResponseEvent(deleteKeyReq.id, DeleteKeyResult.Error, err);
+                        this.postDeleteKeyResponseEvent(deleteKeyReq.id, CommandResult.Error, err);
                     });
                 } else {
-                    this.postDeleteKeyResponseEvent(deleteKeyReq.id, DeleteKeyResult.Error, new Error('No request handler set.'));
+                    this.postDeleteKeyResponseEvent(deleteKeyReq.id, CommandResult.Error, new Error('No request handler set.'));
                 }
             } break;
 
@@ -346,12 +348,12 @@ export class ChainViewAppBinding {
                 console.log(`Received request ${createMarkerReq.id} to create marker with denom ${createMarkerReq.denom}`);
                 if (this.onCreateMarkerRequestHandler) {
                     this.onCreateMarkerRequestHandler(createMarkerReq.denom, createMarkerReq.supply,createMarkerReq.type, createMarkerReq.manager, createMarkerReq.access, (result: ProvenanceMarker) => {
-                        this.postCreateMarkerResponseEvent(createMarkerReq.id, CreateMarkerResult.Success, result, undefined);
+                        this.postCreateMarkerResponseEvent(createMarkerReq.id, CommandResult.Success, result, undefined);
                     }, (err: Error) => {
-                        this.postCreateMarkerResponseEvent(createMarkerReq.id, CreateMarkerResult.Error, undefined, err);
+                        this.postCreateMarkerResponseEvent(createMarkerReq.id, CommandResult.Error, undefined, err);
                     });
                 } else {
-                    this.postCreateMarkerResponseEvent(createMarkerReq.id, CreateMarkerResult.Error, undefined, new Error('No request handler set.'));
+                    this.postCreateMarkerResponseEvent(createMarkerReq.id, CommandResult.Error, undefined, new Error('No request handler set.'));
                 }
             } break;
 
@@ -360,12 +362,12 @@ export class ChainViewAppBinding {
                 console.log(`Received request ${deleteMarkerReq.id} to delete marker ${deleteMarkerReq.denom} from ${deleteMarkerReq.from}`);
                 if (this.onDeleteMarkerRequestHandler) {
                     this.onDeleteMarkerRequestHandler(deleteMarkerReq.denom, deleteMarkerReq.from, () => {
-                        this.postDeleteMarkerResponseEvent(deleteMarkerReq.id, DeleteMarkerResult.Success, undefined);
+                        this.postDeleteMarkerResponseEvent(deleteMarkerReq.id, CommandResult.Success, undefined);
                     }, (err: Error) => {
-                        this.postDeleteMarkerResponseEvent(deleteMarkerReq.id, DeleteMarkerResult.Error, err);
+                        this.postDeleteMarkerResponseEvent(deleteMarkerReq.id, CommandResult.Error, err);
                     });
                 } else {
-                    this.postDeleteMarkerResponseEvent(deleteMarkerReq.id, DeleteMarkerResult.Error, new Error('No request handler set.'));
+                    this.postDeleteMarkerResponseEvent(deleteMarkerReq.id, CommandResult.Error, new Error('No request handler set.'));
                 }
             } break;
 
@@ -374,12 +376,40 @@ export class ChainViewAppBinding {
                 console.log(`Received request ${grantMarkerPrivsReq.id} to grant marker privs on ${grantMarkerPrivsReq.denom}`);
                 if (this.onGrantMarkerPrivsRequestHandler) {
                     this.onGrantMarkerPrivsRequestHandler(grantMarkerPrivsReq.denom, grantMarkerPrivsReq.grants, grantMarkerPrivsReq.from, (result: ProvenanceMarker) => {
-                        this.postGrantMarkerPrivsResponseEvent(grantMarkerPrivsReq.id, GrantMarkerPrivsResult.Success, result, undefined);
+                        this.postGrantMarkerPrivsResponseEvent(grantMarkerPrivsReq.id, CommandResult.Success, result, undefined);
                     }, (err: Error) => {
-                        this.postGrantMarkerPrivsResponseEvent(grantMarkerPrivsReq.id, GrantMarkerPrivsResult.Error, undefined, err);
+                        this.postGrantMarkerPrivsResponseEvent(grantMarkerPrivsReq.id, CommandResult.Error, undefined, err);
                     });
                 } else {
-                    this.postGrantMarkerPrivsResponseEvent(grantMarkerPrivsReq.id, GrantMarkerPrivsResult.Error, undefined, new Error('No request handler set.'));
+                    this.postGrantMarkerPrivsResponseEvent(grantMarkerPrivsReq.id, CommandResult.Error, undefined, new Error('No request handler set.'));
+                }
+            } break;
+
+            case Command.MintMarkerCoinsRequest: {
+                const mintMarkerCoinsReq = event.data as MintMarkerCoinsRequestEvent;
+                console.log(`Received request ${mintMarkerCoinsReq.id} to mint ${mintMarkerCoinsReq.amount} marker coins for ${mintMarkerCoinsReq.denom}`);
+                if (this.onMintMarkerCoinsRequestHandler) {
+                    this.onMintMarkerCoinsRequestHandler(mintMarkerCoinsReq.denom, mintMarkerCoinsReq.amount, mintMarkerCoinsReq.from, () => {
+                        this.postMintMarkerCoinsResponseEvent(mintMarkerCoinsReq.id, CommandResult.Success, undefined);
+                    }, (err: Error) => {
+                        this.postMintMarkerCoinsResponseEvent(mintMarkerCoinsReq.id, CommandResult.Error, err);
+                    });
+                } else {
+                    this.postGrantMarkerPrivsResponseEvent(mintMarkerCoinsReq.id, CommandResult.Error, undefined, new Error('No request handler set.'));
+                }
+            } break;
+
+            case Command.BurnMarkerCoinsRequest: {
+                const burnMarkerCoinsReq = event.data as BurnMarkerCoinsRequestEvent;
+                console.log(`Received request ${burnMarkerCoinsReq.id} to burn ${burnMarkerCoinsReq.amount} marker coins for ${burnMarkerCoinsReq.denom}`);
+                if (this.onBurnMarkerCoinsRequestHandler) {
+                    this.onBurnMarkerCoinsRequestHandler(burnMarkerCoinsReq.denom, burnMarkerCoinsReq.amount, burnMarkerCoinsReq.from, () => {
+                        this.postBurnMarkerCoinsResponseEvent(burnMarkerCoinsReq.id, CommandResult.Success, undefined);
+                    }, (err: Error) => {
+                        this.postBurnMarkerCoinsResponseEvent(burnMarkerCoinsReq.id, CommandResult.Error, err);
+                    });
+                } else {
+                    this.postGrantMarkerPrivsResponseEvent(burnMarkerCoinsReq.id, CommandResult.Error, undefined, new Error('No request handler set.'));
                 }
             } break;
         }
@@ -463,6 +493,22 @@ export class ChainViewAppBinding {
                     this.responseHandlers[grantMarkerPrivsResponseEvent.id](grantMarkerPrivsResponseEvent);
                 }
             } break;
+
+            case Command.MintMarkerCoinsResponse: {
+                const mintMarkerCoinsResponseEvent: MintMarkerCoinsResponseEvent = event.data as MintMarkerCoinsResponseEvent;
+                console.dir(mintMarkerCoinsResponseEvent);
+                if (mintMarkerCoinsResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[mintMarkerCoinsResponseEvent.id](mintMarkerCoinsResponseEvent);
+                }
+            } break;
+
+            case Command.BurnMarkerCoinsResponse: {
+                const burnMarkerCoinsResponseEvent: BurnMarkerCoinsResponseEvent = event.data as BurnMarkerCoinsResponseEvent;
+                console.dir(burnMarkerCoinsResponseEvent);
+                if (burnMarkerCoinsResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[burnMarkerCoinsResponseEvent.id](burnMarkerCoinsResponseEvent);
+                }
+            } break;
         }
     }
 
@@ -501,7 +547,7 @@ export class ChainViewAppBinding {
                 };
                 this.registerResponse(getAcctBalsReqData.id, (eventData: EventData) => {
                     const getAcctBalsResMessage = eventData as GetAccountBalancesResponseEvent;
-                    if (getAcctBalsResMessage.result == GetAccountBalancesResult.Success) {
+                    if (getAcctBalsResMessage.result == CommandResult.Success) {
                         resolve(getAcctBalsResMessage.data);
                     } else {
                         reject(getAcctBalsResMessage.error);
@@ -532,7 +578,7 @@ export class ChainViewAppBinding {
                 };
                 this.registerResponse(createKeyReqData.id, (eventData: EventData) => {
                     const createKeyResMessage = eventData as CreateKeyResponseEvent;
-                    if (createKeyResMessage.result == CreateKeyResult.Success) {
+                    if (createKeyResMessage.result == CommandResult.Success) {
                         resolve(createKeyResMessage.data);
                     } else {
                         reject(createKeyResMessage.error);
@@ -564,7 +610,7 @@ export class ChainViewAppBinding {
                 };
                 this.registerResponse(recoverKeyReqData.id, (eventData: EventData) => {
                     const recoverKeyResMessage = eventData as RecoverKeyResponseEvent;
-                    if (recoverKeyResMessage.result == RecoverKeyResult.Success) {
+                    if (recoverKeyResMessage.result == CommandResult.Success) {
                         resolve(recoverKeyResMessage.data);
                     } else {
                         reject(recoverKeyResMessage.error);
@@ -595,7 +641,7 @@ export class ChainViewAppBinding {
                 };
                 this.registerResponse(deleteKeyReqData.id, (eventData: EventData) => {
                     const deleteKeyResMessage = eventData as DeleteKeyResponseEvent;
-                    if (deleteKeyResMessage.result == DeleteKeyResult.Success) {
+                    if (deleteKeyResMessage.result == CommandResult.Success) {
                         resolve();
                     } else {
                         reject(deleteKeyResMessage.error);
@@ -630,7 +676,7 @@ export class ChainViewAppBinding {
                 };
                 this.registerResponse(createMarkerReqData.id, (eventData: EventData) => {
                     const createMarkerResMessage = eventData as CreateMarkerResponseEvent;
-                    if (createMarkerResMessage.result == CreateMarkerResult.Success) {
+                    if (createMarkerResMessage.result == CommandResult.Success) {
                         resolve(createMarkerResMessage.data);
                     } else {
                         reject(createMarkerResMessage.error);
@@ -662,7 +708,7 @@ export class ChainViewAppBinding {
                 };
                 this.registerResponse(deleteMarkerReqData.id, (eventData: EventData) => {
                     const deleteMarkerResMessage = eventData as DeleteMarkerResponseEvent;
-                    if (deleteMarkerResMessage.result == DeleteMarkerResult.Success) {
+                    if (deleteMarkerResMessage.result == CommandResult.Success) {
                         resolve();
                     } else {
                         reject(deleteMarkerResMessage.error);
@@ -695,7 +741,7 @@ export class ChainViewAppBinding {
                 };
                 this.registerResponse(grantMarkerPrivsReqData.id, (eventData: EventData) => {
                     const grantMarkerPrivsResMessage = eventData as GrantMarkerPrivsResponseEvent;
-                    if (grantMarkerPrivsResMessage.result == GrantMarkerPrivsResult.Success) {
+                    if (grantMarkerPrivsResMessage.result == CommandResult.Success) {
                         resolve(grantMarkerPrivsResMessage.data);
                     } else {
                         reject(grantMarkerPrivsResMessage.error);
@@ -704,6 +750,72 @@ export class ChainViewAppBinding {
                 this._vscode.postMessage(grantMarkerPrivsReqMessage);
             } else {
                 reject(new Error('Cannot execute `grantMarkerPrivs` from VSCode'));
+            }
+        });
+    }
+
+    onMintMarkerCoinsRequest(handler: ((denom: string, amount: number, from: string, resolve: (() => void), reject: ((err: Error) => void)) => void)) {
+        this.onMintMarkerCoinsRequestHandler = handler;
+    }
+    private onMintMarkerCoinsRequestHandler: ((denom: string, amount: number, from: string, resolve: (() => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public mintCoin (denom: string, amount: number, minter: string): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            if (this._vscode) {
+                const mintMarkerCoinsReqData: MintMarkerCoinsRequestEvent = {
+                    id: uuidv4(),
+                    denom: denom,
+                    amount: amount,
+                    from: minter
+                };
+                const mintMarkerCoinsReqMessage: Event = {
+                    command: Command.MintMarkerCoinsRequest,
+                    data: mintMarkerCoinsReqData
+                };
+                this.registerResponse(mintMarkerCoinsReqData.id, (eventData: EventData) => {
+                    const mintMarkerCoinsResMessage = eventData as MintMarkerCoinsResponseEvent;
+                    if (mintMarkerCoinsResMessage.result == CommandResult.Success) {
+                        resolve();
+                    } else {
+                        reject(mintMarkerCoinsResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(mintMarkerCoinsReqMessage);
+            } else {
+                reject(new Error('Cannot execute `mintCoin` from VSCode'));
+            }
+        });
+    }
+    
+    onBurnMarkerCoinsRequest(handler: ((denom: string, amount: number, from: string, resolve: (() => void), reject: ((err: Error) => void)) => void)) {
+        this.onBurnMarkerCoinsRequestHandler = handler;
+    }
+    private onBurnMarkerCoinsRequestHandler: ((denom: string, amount: number, from: string, resolve: (() => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public burnCoin (denom: string, amount: number, burner: string): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            if (this._vscode) {
+                const burnMarkerCoinsReqData: BurnMarkerCoinsRequestEvent = {
+                    id: uuidv4(),
+                    denom: denom,
+                    amount: amount,
+                    from: burner
+                };
+                const burnMarkerCoinsReqMessage: Event = {
+                    command: Command.BurnMarkerCoinsRequest,
+                    data: burnMarkerCoinsReqData
+                };
+                this.registerResponse(burnMarkerCoinsReqData.id, (eventData: EventData) => {
+                    const burnMarkerCoinsResMessage = eventData as BurnMarkerCoinsResponseEvent;
+                    if (burnMarkerCoinsResMessage.result == CommandResult.Success) {
+                        resolve();
+                    } else {
+                        reject(burnMarkerCoinsResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(burnMarkerCoinsReqMessage);
+            } else {
+                reject(new Error('Cannot execute `burnCoin` from VSCode'));
             }
         });
     }
@@ -755,7 +867,7 @@ export class ChainViewAppBinding {
         }
     }
 
-    private postGetAccountBalancesResponseEvent(id: string, result: GetAccountBalancesResult, data: ProvenanceAccountBalance[], error: (Error | undefined)) {
+    private postGetAccountBalancesResponseEvent(id: string, result: CommandResult, data: ProvenanceAccountBalance[], error: (Error | undefined)) {
         if (this._webview) {
             let event: Event = {
                 command: Command.GetAccountBalancesResponse,
@@ -770,7 +882,7 @@ export class ChainViewAppBinding {
         }
     }
 
-    private postCreateKeyResponseEvent(id: string, result: CreateKeyResult, data: (ProvenanceKey | undefined), error: (Error | undefined)) {
+    private postCreateKeyResponseEvent(id: string, result: CommandResult, data: (ProvenanceKey | undefined), error: (Error | undefined)) {
         if (this._webview) {
             let event: Event = {
                 command: Command.CreateKeyResponse,
@@ -785,7 +897,7 @@ export class ChainViewAppBinding {
         }
     }
 
-    private postRecoverKeyResponseEvent(id: string, result: RecoverKeyResult, data: (ProvenanceKey | undefined), error: (Error | undefined)) {
+    private postRecoverKeyResponseEvent(id: string, result: CommandResult, data: (ProvenanceKey | undefined), error: (Error | undefined)) {
         if (this._webview) {
             let event: Event = {
                 command: Command.RecoverKeyResponse,
@@ -800,7 +912,7 @@ export class ChainViewAppBinding {
         }
     }
 
-    private postDeleteKeyResponseEvent(id: string, result: DeleteKeyResult, error: (Error | undefined)) {
+    private postDeleteKeyResponseEvent(id: string, result: CommandResult, error: (Error | undefined)) {
         if (this._webview) {
             let event: Event = {
                 command: Command.DeleteKeyResponse,
@@ -814,7 +926,7 @@ export class ChainViewAppBinding {
         }
     }
 
-    private postCreateMarkerResponseEvent(id: string, result: CreateMarkerResult, data: (ProvenanceMarker | undefined), error: (Error | undefined)) {
+    private postCreateMarkerResponseEvent(id: string, result: CommandResult, data: (ProvenanceMarker | undefined), error: (Error | undefined)) {
         if (this._webview) {
             let event: Event = {
                 command: Command.CreateMarkerResponse,
@@ -829,7 +941,7 @@ export class ChainViewAppBinding {
         }
     }
 
-    private postDeleteMarkerResponseEvent(id: string, result: DeleteMarkerResult, error: (Error | undefined)) {
+    private postDeleteMarkerResponseEvent(id: string, result: CommandResult, error: (Error | undefined)) {
         if (this._webview) {
             let event: Event = {
                 command: Command.DeleteMarkerResponse,
@@ -843,7 +955,7 @@ export class ChainViewAppBinding {
         }
     }
 
-    private postGrantMarkerPrivsResponseEvent(id: string, result: GrantMarkerPrivsResult, data: (ProvenanceMarker | undefined), error: (Error | undefined)) {
+    private postGrantMarkerPrivsResponseEvent(id: string, result: CommandResult, data: (ProvenanceMarker | undefined), error: (Error | undefined)) {
         if (this._webview) {
             let event: Event = {
                 command: Command.GrantMarkerPrivsResponse,
@@ -851,6 +963,34 @@ export class ChainViewAppBinding {
                     id: id,
                     result: result,
                     data: data,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postMintMarkerCoinsResponseEvent(id: string, result: CommandResult, error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.MintMarkerCoinsResponse,
+                data: {
+                    id: id,
+                    result: result,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postBurnMarkerCoinsResponseEvent(id: string, result: CommandResult, error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.BurnMarkerCoinsResponse,
+                data: {
+                    id: id,
+                    result: result,
                     error: error
                 }
             };
