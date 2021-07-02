@@ -46,7 +46,9 @@ export enum Command {
     BurnMarkerCoinsRequest = "burn-marker-coins-request",
     BurnMarkerCoinsResponse = "burn-marker-coins-response",
     WithdrawMarkerCoinsRequest = "withdraw-marker-coins-request",
-    WithdrawMarkerCoinsResponse = "withdraw-marker-coins-response"
+    WithdrawMarkerCoinsResponse = "withdraw-marker-coins-response",
+    SendCoinRequest = "send-coin-request",
+    SendCoinResponse = "send-coin-response"
 }
 
 export enum CommandResult {
@@ -218,6 +220,21 @@ export interface WithdrawMarkerCoinsRequestEvent extends EventData {
 }
 
 export interface WithdrawMarkerCoinsResponseEvent extends EventData {
+    id: string,
+    result: CommandResult,
+    data: (ProvenanceMarker | undefined),
+    error: Error
+}
+
+export interface SendCoinRequestEvent extends EventData {
+    id: string,
+    denom: string,
+    amount: number,
+    to: string,
+    from: string
+}
+
+export interface SendCoinResponseEvent extends EventData {
     id: string,
     result: CommandResult,
     data: (ProvenanceMarker | undefined),
@@ -473,6 +490,20 @@ export class ChainViewAppBinding {
                     this.postWithdrawMarkerCoinsResponseEvent(withdrawMarkerCoinsReq.id, CommandResult.Error, new Error('No request handler set.'));
                 }
             } break;
+
+            case Command.SendCoinRequest: {
+                const sendCoinReq = event.data as SendCoinRequestEvent;
+                console.log(`Received request ${sendCoinReq.id} to send ${sendCoinReq.amount} ${sendCoinReq.denom} coin to ${sendCoinReq.to}`);
+                if (this.onSendCoinRequestHandler) {
+                    this.onSendCoinRequestHandler(sendCoinReq.denom, sendCoinReq.amount, sendCoinReq.to, sendCoinReq.from, () => {
+                        this.postSendCoinResponseEvent(sendCoinReq.id, CommandResult.Success, undefined);
+                    }, (err: Error) => {
+                        this.postSendCoinResponseEvent(sendCoinReq.id, CommandResult.Error, err);
+                    });
+                } else {
+                    this.postSendCoinResponseEvent(sendCoinReq.id, CommandResult.Error, new Error('No request handler set.'));
+                }
+            } break;
         }
     }
 
@@ -584,6 +615,14 @@ export class ChainViewAppBinding {
                 console.dir(withdrawMarkerCoinsResponseEvent);
                 if (withdrawMarkerCoinsResponseEvent.id in this.responseHandlers) {
                     this.responseHandlers[withdrawMarkerCoinsResponseEvent.id](withdrawMarkerCoinsResponseEvent);
+                }
+            } break;
+
+            case Command.SendCoinResponse: {
+                const sendCoinResponseEvent: SendCoinResponseEvent = event.data as SendCoinResponseEvent;
+                console.dir(sendCoinResponseEvent);
+                if (sendCoinResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[sendCoinResponseEvent.id](sendCoinResponseEvent);
                 }
             } break;
         }
@@ -964,6 +1003,40 @@ export class ChainViewAppBinding {
         });
     }
 
+    onSendCoinRequest(handler: ((denom: string, amount: number, to: string, from: string, resolve: (() => void), reject: ((err: Error) => void)) => void)) {
+        this.onSendCoinRequestHandler = handler;
+    }
+    private onSendCoinRequestHandler: ((denom: string, amount: number, to: string, from: string, resolve: (() => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public sendCoin (denom: string, amount: number, address: string, sender: string): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            if (this._vscode) {
+                const sendCoinReqData: SendCoinRequestEvent = {
+                    id: uuidv4(),
+                    denom: denom,
+                    to: address,
+                    amount: amount,
+                    from: sender
+                };
+                const sendCoinReqMessage: Event = {
+                    command: Command.SendCoinRequest,
+                    data: sendCoinReqData
+                };
+                this.registerResponse(sendCoinReqData.id, (eventData: EventData) => {
+                    const sendCoinResMessage = eventData as SendCoinResponseEvent;
+                    if (sendCoinResMessage.result == CommandResult.Success) {
+                        resolve();
+                    } else {
+                        reject(sendCoinResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(sendCoinReqMessage);
+            } else {
+                reject(new Error('Cannot execute `sendCoin` from VSCode'));
+            }
+        });
+    }
+
     public static getCodeInstance(webview: vscode.Webview): ChainViewAppBinding {
         if (!ChainViewAppBinding.instance) {
             ChainViewAppBinding.instance = new ChainViewAppBinding();
@@ -1161,6 +1234,20 @@ export class ChainViewAppBinding {
         if (this._webview) {
             let event: Event = {
                 command: Command.WithdrawMarkerCoinsResponse,
+                data: {
+                    id: id,
+                    result: result,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postSendCoinResponseEvent(id: string, result: CommandResult, error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.SendCoinResponse,
                 data: {
                     id: id,
                     result: result,

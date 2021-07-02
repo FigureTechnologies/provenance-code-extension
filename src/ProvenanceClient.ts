@@ -254,6 +254,10 @@ enum WASMContractStateCommand {
 	Smart = "smart"
 }
 
+enum BankTransactionCommand {
+	Send = "send"
+}
+
 enum MarkerTransactionCommand {
 	Activate = "activate",
 	Burn = "burn",
@@ -1338,6 +1342,48 @@ export class Provenance {
 				}
 			}).catch((err) => {
 				reject(new Error(`Failed to withdraw coin ${denom} to ${recipient}`));
+			});
+		});
+	}
+
+	sendCoin(denom: string, amount: number, recipient: string, sender: string): Promise<void> {
+		return new Promise<void>((resolve, reject) => {
+			// reload the settings
+			this.loadSettings();
+
+			// use the sender signing key
+			var overrides: {[k: string]: any} = {};
+			overrides[ProvenanceClientFlags.From] = this.getAddressForKey(sender);
+
+			// build the command
+			const command = this.buildCommand([
+				ProvenanceCommand.TX, 
+				TransactionCommand.Bank, 
+				BankTransactionCommand.Send, 
+				this.getAddressForKey(sender),
+				this.getAddressForKey(recipient),
+				`${amount}${denom}`
+			], overrides, {}, true);
+
+			let coin_sent = false;
+			Utils.runCommand(command, (out: string) => {
+				var result = JSON.parse(out);
+	
+				result.logs.forEach((log: ProvenanceLog) => {
+					log.events.forEach((event: ProvenanceLogEvent) => {
+						if (event.type == 'transfer') {
+							coin_sent = true;
+						}
+					});
+				});
+			}).then (() => {
+				if (coin_sent) {
+					resolve();
+				} else {
+					reject(new Error(`Failed to send coin ${denom} from ${sender} to ${recipient}`));
+				}
+			}).catch((err) => {
+				reject(new Error(`Failed to send coin ${denom} from ${sender} to ${recipient}`));
 			});
 		});
 	}
