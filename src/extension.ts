@@ -116,38 +116,36 @@ async function ensureKeysHaveHash(keys: ProvenanceKeyConfig[]): Promise<void> {
 	return new Promise<void>((resolve, reject) => {
 		var fundAccounts: any[] = [];
 
-		async.eachSeries(keys, (key, callback) => {
-			console.log(`Checking if ${key.name} has hash...`);
-
-			var needs_hash = true;
-			var withdraw_amount = key.initialHash;
-
-			provenance.getAccountBalances(provenance.getAddressForKey(key.name)).then((holdings) => {
-				holdings.forEach((holding) => {
-					if (holding.denom == 'nhash') {
-						if (holding.amount >= key.minHash) {
-							needs_hash = false;
-						} else if (holding.amount > 0) {
-							withdraw_amount = key.minHash - holding.amount;
-						}
-					}
-				});
-				if (needs_hash) {
-					fundAccounts.push({
-						key: key.name,
-						amount: withdraw_amount
-					});
-				}
-				callback();
-			}).catch((err) => {
-				callback(err);
+		provenance.getMarker('nhash').then((marker) => {
+			// TODO: this finds the first address with WITHDRAW perms... we need to ensure it's in our keyring and we have the private key to sign
+			var withdrawer = marker.access_control.find((access) => {
+				return access.permissions.find((perm) => {
+					return (perm == 'ACCESS_WITHDRAW');
+				}) != undefined;
 			});
-		}, (err) => {
-			if (err) {
-				reject(err);
-			} else {
-				async.eachSeries(fundAccounts, (fundAccount, callback) => {
-					provenance.withdrawCoin('nhash', fundAccount.amount, undefined, fundAccount.key).then(() => {
+			if (withdrawer != undefined) {
+				async.eachSeries(keys, (key, callback) => {
+					console.log(`Checking if ${key.name} has hash...`);
+		
+					var needs_hash = true;
+					var withdraw_amount = key.initialHash;
+		
+					provenance.getAccountBalances(provenance.getAddressForKey(key.name)).then((holdings) => {
+						holdings.forEach((holding) => {
+							if (holding.denom == 'nhash') {
+								if (holding.amount >= key.minHash) {
+									needs_hash = false;
+								} else if (holding.amount > 0) {
+									withdraw_amount = key.minHash - holding.amount;
+								}
+							}
+						});
+						if (needs_hash) {
+							fundAccounts.push({
+								key: key.name,
+								amount: withdraw_amount
+							});
+						}
 						callback();
 					}).catch((err) => {
 						callback(err);
@@ -156,10 +154,26 @@ async function ensureKeysHaveHash(keys: ProvenanceKeyConfig[]): Promise<void> {
 					if (err) {
 						reject(err);
 					} else {
-						resolve();
+						async.eachSeries(fundAccounts, (fundAccount, callback) => {
+							provenance.withdrawCoin('nhash', fundAccount.amount, fundAccount.key, withdrawer!!.address).then(() => {
+								callback();
+							}).catch((err) => {
+								callback(err);
+							});
+						}, (err) => {
+							if (err) {
+								reject(err);
+							} else {
+								resolve();
+							}
+						});
 					}
 				});
+			} else {
+				reject(new Error(`Unable to locate key with WITHDRAW permissions for nhash`));
 			}
+		}).catch((err) => {
+			reject(new Error(`Unable to locate nhash marker`));
 		});
 	});
 }
@@ -624,6 +638,17 @@ export function activate(context: vscode.ExtensionContext) {
 						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
 						RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.Markers);
 					});
+					resolve();
+				}).catch((err) => {
+					vscode.window.showErrorMessage(err.message);
+					reject(err);
+				});
+			});
+
+			chainViewApp.onWithdrawMarkerCoinsRequest((denom: string, amount: number, to: string, from: string, resolve: (() => void), reject: ((err: Error) => void)) => {
+				console.log('onWithdrawMarkerCoinsRequest');
+
+				provenance.withdrawCoin(denom, amount, to, from).then(() => {
 					resolve();
 				}).catch((err) => {
 					vscode.window.showErrorMessage(err.message);

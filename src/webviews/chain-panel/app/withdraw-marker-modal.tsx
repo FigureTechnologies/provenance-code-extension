@@ -1,15 +1,10 @@
 import * as React from "react";
-import './mint-or-burn-marker-modal.scss';
+import './withdraw-marker-modal.scss';
 
 import { Button, Col, Form, Modal, Row, Spinner } from 'react-bootstrap';
 import { ProvenanceKey } from './provenance-key';
 import { ProvenanceMarker } from './provenance-marker';
 import { Utils } from './app-utils';
-
-export enum MintOrBurnMode {
-    Mint = 'mint',
-    Burn = 'burn'
-}
 
 interface ValidationInfo {
     isValid: boolean,
@@ -17,26 +12,25 @@ interface ValidationInfo {
     error: (string | undefined)
 }
 
-interface MintOrBurnMarkerModalProps {
+interface WithdrawMarkerModalProps {
     show: boolean,
     keys: ProvenanceKey[],
     marker: ProvenanceMarker,
-    mode: MintOrBurnMode,
     onCancel: (() => void),
-    onMarkerMinted: ((marker: ProvenanceMarker, total: number) => void),
-    onMarkerBurned: ((marker: ProvenanceMarker, total: number) => void),
+    onMarkerWithdrawn: ((marker: ProvenanceMarker, total: number, address: string) => void),
     onError: ((err: Error) => void)
 }
 
-interface MintOrBurnMarkerModalState {
+interface WithdrawMarkerModalState {
     isBusy: boolean,
     formValid: boolean,
     formValidated: boolean,
     signerValidation: ValidationInfo,
-    totalToMintOrBurnValidation: ValidationInfo
+    totalToWithdrawValidation: ValidationInfo,
+    withdrawToAddressValidation: ValidationInfo
 }
 
-export class MintOrBurnMarkerModal extends React.Component<MintOrBurnMarkerModalProps, MintOrBurnMarkerModalState> {
+export class WithdrawMarkerModal extends React.Component<WithdrawMarkerModalProps, WithdrawMarkerModalState> {
 
     constructor(props: any) {
         super(props);
@@ -50,18 +44,24 @@ export class MintOrBurnMarkerModal extends React.Component<MintOrBurnMarkerModal
                 isValidated: true,
                 error: undefined
             },
-            totalToMintOrBurnValidation: {
+            totalToWithdrawValidation: {
                 isValid: true,
                 isValidated: false,
+                error: undefined
+            },
+            withdrawToAddressValidation: {
+                isValid: true,
+                isValidated: true,
                 error: undefined
             }
         };
 
-        this.mintOrBurnMarker = this.mintOrBurnMarker.bind(this);
+        this.withdrawMarker = this.withdrawMarker.bind(this);
     }
 
     _input_signer;
-    _input_totalToMintOrBurn;
+    _input_totalToWithdraw;
+    _input_withdrawToAddress;
 
     reset() {
         this.setState({
@@ -73,9 +73,14 @@ export class MintOrBurnMarkerModal extends React.Component<MintOrBurnMarkerModal
                 isValidated: true,
                 error: undefined
             },
-            totalToMintOrBurnValidation: {
+            totalToWithdrawValidation: {
                 isValid: true,
                 isValidated: false,
+                error: undefined
+            },
+            withdrawToAddressValidation: {
+                isValid: true,
+                isValidated: true,
                 error: undefined
             }
         });
@@ -99,17 +104,17 @@ export class MintOrBurnMarkerModal extends React.Component<MintOrBurnMarkerModal
                 validationInfo.error = "Address looks invalid";
             } else if (!keyHasPerms({address: value} as ProvenanceKey)) {
                 validationInfo.isValid = false;
-                validationInfo.error = `Signer address does not have permissions to ${this.props.mode == MintOrBurnMode.Mint ? "mint" : "burn"} coin on this marker`;
+                validationInfo.error = `Signer address does not have permissions to withdraw coin on this marker`;
             }
 
             this.setState({
-                formValid: validationInfo.isValid && this.state.totalToMintOrBurnValidation.isValid,
-                formValidated: validationInfo.isValidated && this.state.totalToMintOrBurnValidation.isValidated,
+                formValid: validationInfo.isValid && this.state.totalToWithdrawValidation.isValid && this.state.withdrawToAddressValidation.isValid,
+                formValidated: validationInfo.isValidated && this.state.totalToWithdrawValidation.isValidated && this.state.withdrawToAddressValidation.isValidated,
                 signerValidation: validationInfo
             });
         }
 
-        const validateTotalToMintOrBurn = (value) => {
+        const validateTotalToWithdraw = (value) => {
             var validationInfo: ValidationInfo = {
                 isValid: true,
                 isValidated: true,
@@ -118,16 +123,38 @@ export class MintOrBurnMarkerModal extends React.Component<MintOrBurnMarkerModal
 
             if (isNaN(+value)) {
                 validationInfo.isValid = false;
-                validationInfo.error = `Total coin to ${this.props.mode == MintOrBurnMode.Mint ? "mint" : "burn"} must be numeric`;
+                validationInfo.error = `Total coin to withdraw must be numeric`;
             } else if (value.length == 0) {
                 validationInfo.isValid = false;
-                validationInfo.error = `Total coin to ${this.props.mode == MintOrBurnMode.Mint ? "mint" : "burn"} is required`;
+                validationInfo.error = `Total coin to withdraw is required`;
             }
 
             this.setState({
-                formValid: validationInfo.isValid && this.state.signerValidation.isValid,
-                formValidated: validationInfo.isValidated && this.state.signerValidation.isValidated,
-                totalToMintOrBurnValidation: validationInfo
+                formValid: validationInfo.isValid && this.state.signerValidation.isValid && this.state.withdrawToAddressValidation.isValid,
+                formValidated: validationInfo.isValidated && this.state.signerValidation.isValidated && this.state.withdrawToAddressValidation.isValidated,
+                totalToWithdrawValidation: validationInfo
+            });
+        }
+
+        const validateWithdrawToAddress = (value) => {
+            var validationInfo: ValidationInfo = {
+                isValid: true,
+                isValidated: true,
+                error: undefined
+            };
+
+            if (!value.startsWith('tp') && !value.startsWith('pb')) {
+                validationInfo.isValid = false;
+                validationInfo.error = "Address looks invalid";
+            } else if (value.length != 41) {
+                validationInfo.isValid = false;
+                validationInfo.error = "Address looks invalid";
+            }
+
+            this.setState({
+                formValid: validationInfo.isValid && this.state.signerValidation.isValid && this.state.totalToWithdrawValidation.isValid,
+                formValidated: validationInfo.isValidated && this.state.signerValidation.isValidated && this.state.totalToWithdrawValidation.isValidated,
+                withdrawToAddressValidation: validationInfo
             });
         }
 
@@ -137,7 +164,7 @@ export class MintOrBurnMarkerModal extends React.Component<MintOrBurnMarkerModal
                     return (access.address == k.address);
                 });
                 return (accessControl != undefined && accessControl.permissions.findIndex((perm) => {
-                    return ((this.props.mode == MintOrBurnMode.Mint && perm == 'ACCESS_MINT') || (this.props.mode == MintOrBurnMode.Burn && perm == 'ACCESS_BURN'));
+                    return (perm == 'ACCESS_WITHDRAW');
                 }) >= 0);
             } else {
                 return false;
@@ -165,14 +192,14 @@ export class MintOrBurnMarkerModal extends React.Component<MintOrBurnMarkerModal
                     centered
                     onHide={() => { if (!this.state.isBusy) this.props.onCancel(); }}
                     onEnter={() => this.reset()}
-                    className="mintOrBurnMarkerModal"
+                    className="withdrawMarkerModal"
                 >
                     <Modal.Header closeButton={!this.state.isBusy}>
-                        <Modal.Title id="contained-modal-title-vcenter">{this.props.mode == MintOrBurnMode.Mint ? "Mint Marker Coins" : "Burn Marker Coins"}</Modal.Title>
+                        <Modal.Title id="contained-modal-title-vcenter">Withdraw Marker Coins</Modal.Title>
                     </Modal.Header>
                     <Modal.Body>
                         <Form>
-                            <Form.Group as={Row} controlId="minter-or-burner">
+                            <Form.Group as={Row} controlId="signer">
                                 <Form.Label column sm={3}>Signer</Form.Label>
                                 <Col sm={9}>
                                     <Form.Control 
@@ -197,12 +224,31 @@ export class MintOrBurnMarkerModal extends React.Component<MintOrBurnMarkerModal
                                     <Form.Control 
                                         type="number"
                                         placeholder=""
-                                        ref={(c) => this._input_totalToMintOrBurn = c}
-                                        onChange={e => validateTotalToMintOrBurn(e.currentTarget.value)}
-                                        isInvalid={!this.state.totalToMintOrBurnValidation.isValid}
+                                        ref={(c) => this._input_totalToWithdraw = c}
+                                        onChange={e => validateTotalToWithdraw(e.currentTarget.value)}
+                                        isInvalid={!this.state.totalToWithdrawValidation.isValid}
                                         disabled={this.state.isBusy}
                                     />
-                                    <Form.Control.Feedback type="invalid">{this.state.totalToMintOrBurnValidation.error}</Form.Control.Feedback>
+                                    <Form.Control.Feedback type="invalid">{this.state.totalToWithdrawValidation.error}</Form.Control.Feedback>
+                                </Col>
+                            </Form.Group>
+                            <Form.Group as={Row} controlId="withdraw-to">
+                                <Form.Label column sm={3}>Withdraw to</Form.Label>
+                                <Col sm={9}>
+                                    <Form.Control 
+                                        custom
+                                        as="select"
+                                        placeholder=""
+                                        ref={(c) => this._input_withdrawToAddress = c}
+                                        onChange={e => validateWithdrawToAddress(e.currentTarget.value)}
+                                        isInvalid={!this.state.withdrawToAddressValidation.isValid}
+                                        disabled={this.state.isBusy}
+                                    >
+                                        {keys.map((key, idx) =>
+                                            <option value={key.address}>{key.name} ({key.address})</option>
+                                        )}
+                                    </Form.Control>
+                                    <Form.Control.Feedback type="invalid">{this.state.withdrawToAddressValidation.error}</Form.Control.Feedback>
                                 </Col>
                             </Form.Group>
                         </Form>
@@ -210,7 +256,7 @@ export class MintOrBurnMarkerModal extends React.Component<MintOrBurnMarkerModal
                     <Modal.Footer>
                         <Button 
                             variant="primary" 
-                            onClick={this.mintOrBurnMarker} 
+                            onClick={this.withdrawMarker} 
                             disabled={this.state.isBusy || (!this.state.formValidated || !this.state.formValid)}
                         >
                             { this.state.isBusy ? <span><Spinner
@@ -219,8 +265,8 @@ export class MintOrBurnMarkerModal extends React.Component<MintOrBurnMarkerModal
                                 size="sm"
                                 role="status"
                                 aria-hidden="true"
-                                /> {this.props.mode == MintOrBurnMode.Mint ? "Minting Coins" : "Burning Coins"}...</span>
-                            : <span>{this.props.mode == MintOrBurnMode.Mint ? "Mint Coins" : "Burn Coins"}</span>}
+                                /> Withdrawing Coins...</span>
+                            : <span>Withdraw Coins</span>}
                         </Button>
                         <Button 
                             variant="secondary" 
@@ -235,29 +281,20 @@ export class MintOrBurnMarkerModal extends React.Component<MintOrBurnMarkerModal
         );
     }
 
-    private mintOrBurnMarker() {
+    private withdrawMarker() {
         this.setState({ isBusy: true });
 
         const signer = this._input_signer.value as string;
-        const totalToMintOrBurn = Number(this._input_totalToMintOrBurn.value as string);
+        const totalToWithdraw = Number(this._input_totalToWithdraw.value as string);
+        const withdrawTo = this._input_withdrawToAddress.value as string;
 
-        if (this.props.mode == MintOrBurnMode.Mint) {
-            Utils.mintCoin(this.props.marker.denom, totalToMintOrBurn, signer).then(() => {
-                this.setState({ isBusy: false });
-                this.props.onMarkerMinted(this.props.marker, totalToMintOrBurn);
-            }).catch((err) => {
-                this.setState({ isBusy: false });
-                this.props.onError(err);
-            });
-        } else {
-            Utils.burnCoin(this.props.marker.denom, totalToMintOrBurn, signer).then(() => {
-                this.setState({ isBusy: false });
-                this.props.onMarkerBurned(this.props.marker, totalToMintOrBurn);
-            }).catch((err) => {
-                this.setState({ isBusy: false });
-                this.props.onError(err);
-            });
-        }
+        Utils.withdrawCoin(this.props.marker.denom, totalToWithdraw, withdrawTo, signer).then(() => {
+            this.setState({ isBusy: false });
+            this.props.onMarkerWithdrawn(this.props.marker, totalToWithdraw, withdrawTo);
+        }).catch((err) => {
+            this.setState({ isBusy: false });
+            this.props.onError(err);
+        });
     }
 
 }
