@@ -655,6 +655,17 @@ export function activate(context: vscode.ExtensionContext) {
 					reject(err);
 				});
 			});
+
+			chainViewApp.onSendCoinRequest((denom: string, amount: number, to: string, from: string, resolve: (() => void), reject: ((err: Error) => void)) => {
+				console.log('onSendCoinRequest');
+
+				provenance.sendCoin(denom, amount, to, from).then(() => {
+					resolve();
+				}).catch((err) => {
+					vscode.window.showErrorMessage(err.message);
+					reject(err);
+				});
+			});
 		});
 	});
 

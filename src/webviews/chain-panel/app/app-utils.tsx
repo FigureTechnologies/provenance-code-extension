@@ -54,6 +54,11 @@ export class Utils {
         return appBinding.withdrawCoin(denom, amount, address, signer);
     }
 
+    static sendCoin (denom: string, amount: number, address: string, sender: string): Promise<void> {
+        const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();
+        return appBinding.sendCoin(denom, amount, address, sender);
+    }
+
     static showAlert (type: Alert, title: string, body: string, dismissable: boolean): Promise<void> {
         return new Promise<void>((resolve, reject) => {
             const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();

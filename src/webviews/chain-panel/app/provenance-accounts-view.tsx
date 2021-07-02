@@ -59,7 +59,7 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
                     }
                 });
             }).catch((err) => {
-                // TODO: set error message
+                Utils.showAlert(Alert.Danger, `Unable to retrieve account details for key ${k.address}`, err.message, true);
             });
         };
 
@@ -191,7 +191,14 @@ export default class ProvenanceAccountsView extends React.Component<ProvenanceAc
                         </Card.Body>
                     </Card>
                 }
-                { isAccountDetailsShown() && <AccountDetailsView accountKey={this.state.accountDetails.key} accountBalances={this.state.accountDetails.balances}></AccountDetailsView> }
+                { isAccountDetailsShown() && <AccountDetailsView 
+                    accountKey={this.state.accountDetails.key} 
+                    allKeys={keys} 
+                    accountBalances={this.state.accountDetails.balances}
+                    onRefresh={() => {
+                        showAccountDetails(this.state.accountDetails.key);
+                    }}
+                ></AccountDetailsView> }
                 <RecoverKeyModal
                     show={this.state.recoverKeyModalShown}
                     onCancel={() => hideRecoverKeyModal()}
