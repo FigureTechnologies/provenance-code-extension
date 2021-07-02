@@ -1,6 +1,6 @@
 import * as React from "react";
 import './provenance-markers-view.scss';
-import { FaPlus, FaTrashAlt, FaCoins, FaFireAlt } from 'react-icons/fa';
+import { FaPlus, FaTrashAlt, FaCoins, FaFireAlt, FaArrowCircleDown } from 'react-icons/fa';
 import Dialog from 'react-bootstrap-dialog';
 
 import { Breadcrumb, Button, Card, OverlayTrigger, Table, Tooltip } from 'react-bootstrap';
@@ -12,6 +12,7 @@ import { Utils } from './app-utils';
 import MarkerDetailsView from './marker-details-view';
 import AddMarkerModal from './add-marker-modal';
 import { MintOrBurnMarkerModal, MintOrBurnMode } from './mint-or-burn-marker-modal';
+import { WithdrawMarkerModal } from './withdraw-marker-modal';
 
 interface ProvenanceMarkerDetails {
     marker: ProvenanceMarker
@@ -28,7 +29,9 @@ interface ProvenanceMarkersViewState {
     addMarkerModalShown: boolean,
     mintOrBurnMarkerModalShown: boolean,
     mintOrBurnMarker: ProvenanceMarker,
-    mintOrBurnMode: MintOrBurnMode
+    mintOrBurnMode: MintOrBurnMode,
+    withdrawMarkerModalShown: boolean,
+    withdrawMarker: ProvenanceMarker
 }
 
 export default class ProvenanceMarkersView extends React.Component<ProvenanceMarkersViewProps, ProvenanceMarkersViewState> {
@@ -41,7 +44,9 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
             addMarkerModalShown: false,
             mintOrBurnMarkerModalShown: false,
             mintOrBurnMarker: undefined,
-            mintOrBurnMode: MintOrBurnMode.Mint
+            mintOrBurnMode: MintOrBurnMode.Mint,
+            withdrawMarkerModalShown: false,
+            withdrawMarker: undefined
         };
     }
 
@@ -98,6 +103,10 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
             showMintOrBurnMarkerModal(m, MintOrBurnMode.Burn);
         };
 
+        const withdrawMarkerCoins = (m) => {
+            showWithdrawMarkerModal(m);
+        };
+
         const goHome = () => {
             this.setState({
                 markerDetails: undefined
@@ -130,16 +139,33 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
             });
         };
 
+        const showWithdrawMarkerModal = (marker: ProvenanceMarker) => {
+            this.setState({
+                withdrawMarkerModalShown: true,
+                withdrawMarker: marker
+            });
+        };
+
+        const hideWithdrawMarkerModal = () => {
+            this.setState({
+                withdrawMarkerModalShown: false
+            });
+        };
+
         const renderAddMarkerTooltip = (props) => (
             <Tooltip id="button-tooltip" {...props}>New marker</Tooltip>
         );
 
         const renderMintMarkerTooltip = (props) => (
-            <Tooltip id="mint-button-tooltip" {...props}>Mint marker coins</Tooltip>
+            <Tooltip id="mint-button-tooltip" {...props}>Mint</Tooltip>
         );
 
         const renderBurnMarkerTooltip = (props) => (
-            <Tooltip id="burn-button-tooltip" {...props}>Burn marker coins</Tooltip>
+            <Tooltip id="burn-button-tooltip" {...props}>Burn</Tooltip>
+        );
+
+        const renderWithdrawMarkerTooltip = (props) => (
+            <Tooltip id="withdraw-button-tooltip" {...props}>Withdraw</Tooltip>
         );
 
         const renderDeleteMarkerTooltip = (props) => (
@@ -187,9 +213,9 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
                                         <tr key={marker.denom}>
                                             <td><a href="#" onClick={() => showMarkerDetails(marker)}>{marker.denom}</a></td>
                                             <td>{marker.base_account.address}</td>
-                                            <td>{marker.status}</td>
+                                            <td>{marker.status.replace('MARKER_STATUS_', '')}</td>
                                             <td>{marker.supply} {marker.supply_fixed && <span>(fixed)</span>}</td>
-                                            <td>{marker.marker_type}</td>
+                                            <td>{marker.marker_type.replace('MARKER_TYPE_', '')}</td>
                                             <td>
                                                 {!marker.supply_fixed && <OverlayTrigger
                                                     placement="bottom"
@@ -205,6 +231,13 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
                                                 >
                                                     <span className="markerAction"><a href="#" className="actions" onClick={() => burnMarkerCoins(marker)}><FaFireAlt /></a></span>
                                                 </OverlayTrigger>}
+                                                <OverlayTrigger
+                                                    placement="bottom"
+                                                    delay={{ show: 250, hide: 400 }}
+                                                    overlay={renderWithdrawMarkerTooltip}
+                                                >
+                                                    <span className="markerAction"><a href="#" className="actions" onClick={() => withdrawMarkerCoins(marker)}><FaArrowCircleDown /></a></span>
+                                                </OverlayTrigger>
                                                 {marker.denom != "nhash" && <OverlayTrigger
                                                     placement="bottom"
                                                     delay={{ show: 250, hide: 400 }}
@@ -224,7 +257,7 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
                 <AddMarkerModal
                     show={this.state.addMarkerModalShown}
                     keys={keys}
-                    onCancel={() => hideAddMarkerModal() }
+                    onCancel={() => hideAddMarkerModal()}
                     onMarkerCreated={(marker) => { 
                         hideAddMarkerModal();
                         Utils.showAlert(Alert.Success, `Created new marker "${marker.denom}"`, `Created new marker "${marker.denom}" of type "${marker.marker_type}" with supply of ${marker.supply}`, true);
@@ -238,7 +271,7 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
                     keys={keys}
                     marker={this.state.mintOrBurnMarker}
                     mode={this.state.mintOrBurnMode}
-                    onCancel={() => hideMintOrBurnMarkerModal() }
+                    onCancel={() => hideMintOrBurnMarkerModal()}
                     onMarkerMinted={(marker, total) => {
                         hideMintOrBurnMarkerModal();
                         Utils.showAlert(Alert.Success, `Successfully minted marker coins`, `Minted ${total} ${marker.denom} coins`, true);
@@ -251,6 +284,19 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
                         Utils.showAlert(Alert.Danger, `Unable to ${(this.state.mintOrBurnMode == MintOrBurnMode.Mint) ? "mint" : "burn"} marker coin`, err.message, true);
                     }}
                 ></MintOrBurnMarkerModal>
+                <WithdrawMarkerModal
+                    show={this.state.withdrawMarkerModalShown}
+                    keys={keys}
+                    marker={this.state.withdrawMarker}
+                    onCancel={() => hideWithdrawMarkerModal()}
+                    onMarkerWithdrawn={(marker, total, address) => {
+                        hideWithdrawMarkerModal();
+                        Utils.showAlert(Alert.Success, `Successfully withdrew marker coins`, `Withdrew ${total} ${marker.denom} coins to ${address}`, true);
+                    }}
+                    onError={(err) => {
+                        Utils.showAlert(Alert.Danger, `Unable to withdraw marker coin`, err.message, true);
+                    }}
+                ></WithdrawMarkerModal>
                 <Dialog ref={(el) => { this.confirmDeleteDialog = el }} />
             </React.Fragment>
         );

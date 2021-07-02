@@ -1300,27 +1300,25 @@ export class Provenance {
 		});
 	}
 
-	withdrawCoin(denom: string, amount: number, sender: (string | undefined), recipient: string): Promise<void> {
-		// reload the settings
-		this.loadSettings();
-
-		// use the sender signing key
-		var overrides: {[k: string]: any} = {};
-		if (sender) {
-			overrides[ProvenanceClientFlags.From] = sender;
-		}
-
-		// build the command
-		const command = this.buildCommand([
-			ProvenanceCommand.TX, 
-			TransactionCommand.Marker, 
-			MarkerTransactionCommand.Withdraw, 
-			denom,
-			`${amount}${denom}`,
-			this.getAddressForKey(recipient)
-		], overrides, {}, true);
-
+	withdrawCoin(denom: string, amount: number, recipient: string, sender: string): Promise<void> {
 		return new Promise<void>((resolve, reject) => {
+			// reload the settings
+			this.loadSettings();
+
+			// use the sender signing key
+			var overrides: {[k: string]: any} = {};
+			overrides[ProvenanceClientFlags.From] = this.getAddressForKey(sender);
+
+			// build the command
+			const command = this.buildCommand([
+				ProvenanceCommand.TX, 
+				TransactionCommand.Marker, 
+				MarkerTransactionCommand.Withdraw, 
+				denom,
+				`${amount}${denom}`,
+				this.getAddressForKey(recipient)
+			], overrides, {}, true);
+			
 			let coin_withdrawn = false;
 			Utils.runCommand(command, (out: string) => {
 				var result = JSON.parse(out);

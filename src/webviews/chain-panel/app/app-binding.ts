@@ -44,7 +44,9 @@ export enum Command {
     MintMarkerCoinsRequest = "mint-marker-coins-request",
     MintMarkerCoinsResponse = "mint-marker-coins-response",
     BurnMarkerCoinsRequest = "burn-marker-coins-request",
-    BurnMarkerCoinsResponse = "burn-marker-coins-response"
+    BurnMarkerCoinsResponse = "burn-marker-coins-response",
+    WithdrawMarkerCoinsRequest = "withdraw-marker-coins-request",
+    WithdrawMarkerCoinsResponse = "withdraw-marker-coins-response"
 }
 
 export enum CommandResult {
@@ -201,6 +203,21 @@ export interface BurnMarkerCoinsRequestEvent extends EventData {
 }
 
 export interface BurnMarkerCoinsResponseEvent extends EventData {
+    id: string,
+    result: CommandResult,
+    data: (ProvenanceMarker | undefined),
+    error: Error
+}
+
+export interface WithdrawMarkerCoinsRequestEvent extends EventData {
+    id: string,
+    denom: string,
+    amount: number,
+    to: string,
+    from: string
+}
+
+export interface WithdrawMarkerCoinsResponseEvent extends EventData {
     id: string,
     result: CommandResult,
     data: (ProvenanceMarker | undefined),
@@ -425,7 +442,7 @@ export class ChainViewAppBinding {
                         this.postMintMarkerCoinsResponseEvent(mintMarkerCoinsReq.id, CommandResult.Error, err);
                     });
                 } else {
-                    this.postGrantMarkerPrivsResponseEvent(mintMarkerCoinsReq.id, CommandResult.Error, undefined, new Error('No request handler set.'));
+                    this.postMintMarkerCoinsResponseEvent(mintMarkerCoinsReq.id, CommandResult.Error, new Error('No request handler set.'));
                 }
             } break;
 
@@ -439,7 +456,21 @@ export class ChainViewAppBinding {
                         this.postBurnMarkerCoinsResponseEvent(burnMarkerCoinsReq.id, CommandResult.Error, err);
                     });
                 } else {
-                    this.postGrantMarkerPrivsResponseEvent(burnMarkerCoinsReq.id, CommandResult.Error, undefined, new Error('No request handler set.'));
+                    this.postBurnMarkerCoinsResponseEvent(burnMarkerCoinsReq.id, CommandResult.Error, new Error('No request handler set.'));
+                }
+            } break;
+
+            case Command.WithdrawMarkerCoinsRequest: {
+                const withdrawMarkerCoinsReq = event.data as WithdrawMarkerCoinsRequestEvent;
+                console.log(`Received request ${withdrawMarkerCoinsReq.id} to withdraw ${withdrawMarkerCoinsReq.amount} marker coins for ${withdrawMarkerCoinsReq.denom} to ${withdrawMarkerCoinsReq.to}`);
+                if (this.onWithdrawMarkerCoinsRequestHandler) {
+                    this.onWithdrawMarkerCoinsRequestHandler(withdrawMarkerCoinsReq.denom, withdrawMarkerCoinsReq.amount, withdrawMarkerCoinsReq.to, withdrawMarkerCoinsReq.from, () => {
+                        this.postWithdrawMarkerCoinsResponseEvent(withdrawMarkerCoinsReq.id, CommandResult.Success, undefined);
+                    }, (err: Error) => {
+                        this.postWithdrawMarkerCoinsResponseEvent(withdrawMarkerCoinsReq.id, CommandResult.Error, err);
+                    });
+                } else {
+                    this.postWithdrawMarkerCoinsResponseEvent(withdrawMarkerCoinsReq.id, CommandResult.Error, new Error('No request handler set.'));
                 }
             } break;
         }
@@ -545,6 +576,14 @@ export class ChainViewAppBinding {
                 console.dir(burnMarkerCoinsResponseEvent);
                 if (burnMarkerCoinsResponseEvent.id in this.responseHandlers) {
                     this.responseHandlers[burnMarkerCoinsResponseEvent.id](burnMarkerCoinsResponseEvent);
+                }
+            } break;
+
+            case Command.WithdrawMarkerCoinsResponse: {
+                const withdrawMarkerCoinsResponseEvent: WithdrawMarkerCoinsResponseEvent = event.data as WithdrawMarkerCoinsResponseEvent;
+                console.dir(withdrawMarkerCoinsResponseEvent);
+                if (withdrawMarkerCoinsResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[withdrawMarkerCoinsResponseEvent.id](withdrawMarkerCoinsResponseEvent);
                 }
             } break;
         }
@@ -891,6 +930,40 @@ export class ChainViewAppBinding {
         });
     }
 
+    onWithdrawMarkerCoinsRequest(handler: ((denom: string, amount: number, to: string, from: string, resolve: (() => void), reject: ((err: Error) => void)) => void)) {
+        this.onWithdrawMarkerCoinsRequestHandler = handler;
+    }
+    private onWithdrawMarkerCoinsRequestHandler: ((denom: string, amount: number, to: string, from: string, resolve: (() => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public withdrawCoin (denom: string, amount: number, address: string, signer: string): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            if (this._vscode) {
+                const withdrawMarkerCoinsReqData: WithdrawMarkerCoinsRequestEvent = {
+                    id: uuidv4(),
+                    denom: denom,
+                    to: address,
+                    amount: amount,
+                    from: signer
+                };
+                const withdrawMarkerCoinsReqMessage: Event = {
+                    command: Command.WithdrawMarkerCoinsRequest,
+                    data: withdrawMarkerCoinsReqData
+                };
+                this.registerResponse(withdrawMarkerCoinsReqData.id, (eventData: EventData) => {
+                    const withdrawMarkerCoinsResMessage = eventData as WithdrawMarkerCoinsResponseEvent;
+                    if (withdrawMarkerCoinsResMessage.result == CommandResult.Success) {
+                        resolve();
+                    } else {
+                        reject(withdrawMarkerCoinsResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(withdrawMarkerCoinsReqMessage);
+            } else {
+                reject(new Error('Cannot execute `withdrawCoin` from VSCode'));
+            }
+        });
+    }
+
     public static getCodeInstance(webview: vscode.Webview): ChainViewAppBinding {
         if (!ChainViewAppBinding.instance) {
             ChainViewAppBinding.instance = new ChainViewAppBinding();
@@ -1074,6 +1147,20 @@ export class ChainViewAppBinding {
         if (this._webview) {
             let event: Event = {
                 command: Command.BurnMarkerCoinsResponse,
+                data: {
+                    id: id,
+                    result: result,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postWithdrawMarkerCoinsResponseEvent(id: string, result: CommandResult, error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.WithdrawMarkerCoinsResponse,
                 data: {
                     id: id,
                     result: result,
