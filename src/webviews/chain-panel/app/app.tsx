@@ -7,11 +7,9 @@ import { ProvenanceMarker } from './provenance-marker';
 import { AlertEvent, ChainViewAppBinding, Command, Event } from './app-binding';
 
 import ProvenanceAccountsView from './provenance-accounts-view';
-import ProvenanceBankView from './provenance-bank-view';
 import ProvenanceMarkersView from './provenance-markers-view';
 
 const ACCOUNTS_VIEW: string = 'accounts';
-const BANK_VIEW: string = 'bank';
 const MARKERS_VIEW: string = 'markers';
 
 declare global {
@@ -98,14 +96,12 @@ export class App extends React.Component<AppProps, AppState> {
                     <Navbar.Collapse id="responsive-navbar-nav">
                         <Nav className="mr-auto">
                             <Nav.Link active={this.state.activeView == ACCOUNTS_VIEW} onClick={() => setActiveView(ACCOUNTS_VIEW)}>Accounts</Nav.Link>
-                            <Nav.Link active={this.state.activeView == BANK_VIEW} onClick={() => setActiveView(BANK_VIEW)}>Bank</Nav.Link>
                             <Nav.Link active={this.state.activeView == MARKERS_VIEW} onClick={() => setActiveView(MARKERS_VIEW)}>Markers</Nav.Link>
                         </Nav>
                     </Navbar.Collapse>
                 </Navbar>
                 <Container className="rootContainer" fluid>
                     {this.state.activeView == ACCOUNTS_VIEW && <ProvenanceAccountsView appBinding={this.appBinding} accountKeys={this.state.keys}></ProvenanceAccountsView>}
-                    {this.state.activeView == BANK_VIEW && <ProvenanceBankView></ProvenanceBankView>}
                     {this.state.activeView == MARKERS_VIEW && <ProvenanceMarkersView appBinding={this.appBinding} accountKeys={this.state.keys} markers={this.state.markers}></ProvenanceMarkersView>}
                 </Container>
                 <Container className="alertContainer" style={{maxWidth: "initial"}}>
