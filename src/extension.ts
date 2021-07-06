@@ -91,6 +91,41 @@ function storeWasm(): Promise<number> {
 	});
 }
 
+function findKeyWithMostCoinOfDenom(denom: string): Promise<Key> {
+	return new Promise<Key>((resolve, reject) => {
+		provenance.getAllKeys().then((keys) => {
+			var top_key: Key;
+			var top_coin = 0;
+
+			async.eachSeries(keys, (key, callback) => {
+				provenance.getAccountBalances(key.address).then((assets) => {
+					assets.forEach((asset) => {
+						if (asset.denom == denom && asset.amount > top_coin) {
+							top_coin = asset.amount;
+							top_key = key;
+						}
+					});
+					callback();
+				}).catch((err) => {
+					callback(err);
+				});
+			}, (err) => {
+				if (err) {
+					reject(err);
+				} else {
+					if (top_coin > 0) {
+						resolve(top_key);
+					} else {
+						reject(new Error(`Unable to locate key with ${denom} coins`));
+					}
+				}
+			});
+		}).catch((err) => {
+			reject(err);
+		});
+	});
+}
+
 async function ensureKeysExist(keys: ProvenanceKeyConfig[]): Promise<void> {
 	return new Promise<void>((resolve, reject) => {
 		var createKeys: Promise<Key>[] = [];
@@ -158,7 +193,16 @@ async function ensureKeysHaveHash(keys: ProvenanceKeyConfig[]): Promise<void> {
 							provenance.withdrawCoin('nhash', fundAccount.amount, fundAccount.key, withdrawer!!.address).then(() => {
 								callback();
 							}).catch((err) => {
-								callback(err);
+								console.log('Unable to withdraw hash... looking for a loaded key');
+								findKeyWithMostCoinOfDenom('nhash').then((key) => {
+									provenance.sendCoin('nhash', fundAccount.amount, fundAccount.key, key.address).then(() => {
+										callback();
+									}).catch((err) => {
+										callback(err);
+									});
+								}).catch((err) => {
+									callback(err);
+								});
 							});
 						}, (err) => {
 							if (err) {
