@@ -106,7 +106,13 @@ export default class SmartContractInfoView extends React.Component<SmartContract
                                     <Col sm={3}>Code Id:</Col>
                                     <Col sm={9}>
                                         {info.codeId} (latest: {info.latestCodeId})
-                                        {isContractOutOfDate(info) && <span>MIGRATE</span>}
+                                        {isContractOutOfDate(info) && <OverlayTrigger
+                                            placement="bottom"
+                                            delay={{ show: 250, hide: 400 }}
+                                            overlay={renderMigrateContractTooltip}
+                                        >
+                                            <span> <a href="#" className="actions" onClick={() => migrateContract(info)}><FaExclamationTriangle /></a></span>
+                                        </OverlayTrigger>}
                                     </Col>
                                 </Row>
                             </Container>
