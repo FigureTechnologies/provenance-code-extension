@@ -8,13 +8,23 @@ import './smart-contract-string-property-view.scss';
 
 interface SmartContractStringPropertyViewProps {
     property: SmartContractFunctionProperty,
-    index: number
+    index: number,
+    value: any,
+    onChange(value: any): void
 }
 
-export default class SmartContractStringPropertyView extends React.Component<SmartContractStringPropertyViewProps> implements ISmartContractPropertyView {
+interface SmartContractStringPropertyViewState {
+    value: string;
+}
+
+export default class SmartContractStringPropertyView extends React.Component<SmartContractStringPropertyViewProps, SmartContractStringPropertyViewState> implements ISmartContractPropertyView {
 
     constructor(props: any) {
         super(props);
+
+        this.state = {
+            value: this.props.value
+        };
 
         this.generateUuid = this.generateUuid.bind(this);
     }
@@ -25,13 +35,18 @@ export default class SmartContractStringPropertyView extends React.Component<Sma
         const prop = this.props.property;
         //const idx = this.props.index;
 
+        const onChange = (val) => {
+            this.setState({ value: val });
+            this.props.onChange(val);
+        }
+
         return (
             <React.Fragment>
                 <Form.Group as={Row} controlId={prop.name}>
                     <Form.Label column sm={3}>{prop.name}</Form.Label>
                     <Col sm={9}>
                         <InputGroup className="mb-3">
-                            <Form.Control type="text" placeholder="" ref={(c) => this._input = c} />
+                            <Form.Control type="text" placeholder="" value={this.state.value} onChange={(e) => onChange(e.currentTarget.value)} ref={(c) => this._input = c} />
                             <InputGroup.Append>
                                 <Button variant="outline-secondary" onClick={this.generateUuid}>UUID</Button>
                             </InputGroup.Append>
@@ -54,6 +69,14 @@ export default class SmartContractStringPropertyView extends React.Component<Sma
     toJSON(): any {
         const value = this._input.value as string;
         return value;
+    }
+
+    get value(): any {
+        return this.state.value;
+    }
+
+    set value(val: any) {
+        this.setState({ value: val });
     }
 
 }

@@ -6,3 +6,32 @@
 .contractInfoField {
     font-family: monospace;
 }
+
+.nonSingletonContractInfoField {
+    font-family: monospace;
+    padding-bottom: 8px;
+}
+
+.modal-content {
+    color: #000;
+}
+
+a.actions {
+    color: #e9ecef;
+    text-decoration: none;
+
+    :link {
+        color: #aaa;
+        text-decoration: none;
+    }
+
+    :visited {
+        color: #aaa;
+        text-decoration: none;
+    }
+
+    :hover {
+        color: #fff;
+        text-decoration: none;
+    }
+}

@@ -4,7 +4,7 @@ import * as path from 'path';
 import { URL } from 'url';
 import SimpleGit, { RemoteWithRefs } from 'simple-git';
 
-import { ProvenanceConfig } from './ProvenanceClient'
+import { Contract, Provenance, ProvenanceConfig } from './ProvenanceClient'
 
 import { SmartContractFunction, SmartContractFunctionProperty, SmartContractFunctionType, SmartContractFunctions } from './webviews/run-panel/app/smart-contract-function';
 
@@ -16,8 +16,6 @@ class JSONSchemaSmartContractFunctionProperty implements SmartContractFunctionPr
     properties: SmartContractFunctionProperty[] = [];
 
     constructor(jsonSchema: any) {
-        //console.dir(jsonSchema);
-
         this.type = jsonSchema.type;
         if (this.type == 'object') {
             this.properties = JSONSchemaSmartContractFunctionProperty.parseObjectProperties(jsonSchema.properties);
@@ -30,8 +28,6 @@ class JSONSchemaSmartContractFunctionProperty implements SmartContractFunctionPr
         var props: JSONSchemaSmartContractFunctionProperty[] = [];
 
         for (const key in jsonSchema.properties) {
-            //console.log(`Found key ${key}`);
-            
             var prop = new JSONSchemaSmartContractFunctionProperty(jsonSchema.properties[key]);
             prop.name = key;
             prop.required = (jsonSchema.required && jsonSchema.required.includes(key));
@@ -51,11 +47,65 @@ class JSONSchemaSmartContractFunction implements SmartContractFunction {
     constructor(jsonSchema: any, funcType: SmartContractFunctionType) {
         this.name = jsonSchema.required[0];
         this.type = funcType;
-        console.log(`Found func ${this.name}`);
         const args = jsonSchema.properties[jsonSchema.required[0]];
         if (args) {
             this.properties = JSONSchemaSmartContractFunctionProperty.parseObjectProperties(args);
         }
+    }
+}
+
+class ObjectSmartContractFunctionProperty implements SmartContractFunctionProperty {
+    name: string = '';
+    type: string = '';
+    required: boolean = false;
+    items: string = '';
+    properties: SmartContractFunctionProperty[] = [];
+
+    constructor(name: string, type: string, required: boolean, items: string, properties: SmartContractFunctionProperty[]) {
+        this.name = name;
+        this.type = type;
+        this.required = required;
+        this.items = items;
+        this.properties = properties;
+    }
+
+    static parseObjectProperties(obj: any): ObjectSmartContractFunctionProperty[] {
+        var props: ObjectSmartContractFunctionProperty[] = [];
+
+        for (let [key, value] of Object.entries(obj)) {
+            console.log(`${key} is ${typeof value}`);
+            switch (typeof value) {
+                case 'string': {
+                    props.push(new ObjectSmartContractFunctionProperty(key, 'string', true, '', []));
+                } break;
+
+                case 'number': {
+                    props.push(new ObjectSmartContractFunctionProperty(key, 'number', true, '', []));
+                } break;
+
+                case 'object': {
+                    props.push(new ObjectSmartContractFunctionProperty(key, 'object', true, '', ObjectSmartContractFunctionProperty.parseObjectProperties(value) as SmartContractFunctionProperty[]));
+                } break;
+
+                case 'boolean': {
+                    props.push(new ObjectSmartContractFunctionProperty(key, 'boolean', true, '', []));
+                } break;
+            }
+        };
+
+        return props;
+    }
+}
+
+class ObjectSmartContractFunction implements SmartContractFunction {
+    name: string = '';
+    type: SmartContractFunctionType = SmartContractFunctionType.Execute;
+    properties: SmartContractFunctionProperty[] = [];
+
+    constructor(obj: any, funcName: string, funcType: SmartContractFunctionType) {
+        this.name = funcName;
+        this.type = funcType;
+        this.properties = ObjectSmartContractFunctionProperty.parseObjectProperties(obj) as SmartContractFunctionProperty[];
     }
 }
 
@@ -185,55 +235,100 @@ export class Utils {
         return camel.charAt(0).toUpperCase() + camel.slice(1);
     }
 
-    static async loadContractFunctions(): Promise<SmartContractFunctions> {
-        const promise = new Promise<SmartContractFunctions>((resolve, reject) => {
-            var executeFunctions: SmartContractFunction[] = [];
-            var queryFunctions: SmartContractFunction[] = [];
-
-            vscode.workspace.findFiles('schema/*.json', '/').then((foundFiles: vscode.Uri[]) => {
-                if (foundFiles && foundFiles.length > 0) {
-                    Promise.all(foundFiles.map(async (foundFile) => {
-                        return new Promise<void>((iresolve) => {
-                            vscode.workspace.openTextDocument(foundFile).then((jsonSchemaDoc) => {
-                                let jsonSchema: any = JSON.parse(jsonSchemaDoc.getText());
-                                //console.dir(jsonSchema);
-
-                                if (jsonSchema.$schema && jsonSchema.$schema.includes('http://json-schema.org/')) {
-                                    if (jsonSchema.title == 'ExecuteMsg') {
-                                        jsonSchema.anyOf.forEach((jsonSchemaFunc: any) => {
-                                            try {
-                                                var scFunc = new JSONSchemaSmartContractFunction(jsonSchemaFunc, SmartContractFunctionType.Execute);
-                                                executeFunctions.push(scFunc);
-                                            } catch (ex) {}
-                                        });
-                                    } else if (jsonSchema.title == 'QueryMsg') {
-                                        jsonSchema.anyOf.forEach((jsonSchemaFunc: any) => {
-                                            try {
-                                                var scFunc = new JSONSchemaSmartContractFunction(jsonSchemaFunc, SmartContractFunctionType.Query);
-                                                queryFunctions.push(scFunc);
-                                            } catch (ex) {}
-                                        });
-                                    }
-                                }
-
-                                iresolve();
-                            });
-                        });
-                    })).then(() => {
-                        console.dir(executeFunctions);
-                        console.dir(queryFunctions);
-                        resolve({
-                            executeFunctions: executeFunctions,
-                            queryFunctions: queryFunctions
-                        });
-                    });
-                } else {
-                    reject(new Error("Workspace does not contain JSON schemas in the '/schemas' directory."));
-                }
+    static loadContractInitFunction(): Promise<SmartContractFunction> {
+        const promise = new Promise<SmartContractFunction>((resolve, reject) => {
+            Utils.loadProvenanceConfig().then((config) => {
+                resolve (new ObjectSmartContractFunction(config.initArgs, 'instantiate', SmartContractFunctionType.Instantiate) as SmartContractFunction);
+            }).catch((err) => {
+                reject(err);
             });
         });
 
         return promise;
+    }
+
+    static loadContractFunctions(): Promise<SmartContractFunctions> {
+        const promise = new Promise<SmartContractFunctions>((resolve, reject) => {
+            var initFuncton: SmartContractFunction;
+            var executeFunctions: SmartContractFunction[] = [];
+            var queryFunctions: SmartContractFunction[] = [];
+
+            Utils.loadContractInitFunction().then((func) => {
+                // save the init function
+                initFuncton = func;
+
+                vscode.workspace.findFiles('schema/*.json', '/').then((foundFiles: vscode.Uri[]) => {
+                    if (foundFiles && foundFiles.length > 0) {
+                        Promise.all(foundFiles.map(async (foundFile) => {
+                            return new Promise<void>((iresolve) => {
+                                vscode.workspace.openTextDocument(foundFile).then((jsonSchemaDoc) => {
+                                    let jsonSchema: any = JSON.parse(jsonSchemaDoc.getText());
+                                    //console.dir(jsonSchema);
+    
+                                    if (jsonSchema.$schema && jsonSchema.$schema.includes('http://json-schema.org/')) {
+                                        if (jsonSchema.title == 'ExecuteMsg') {
+                                            jsonSchema.anyOf.forEach((jsonSchemaFunc: any) => {
+                                                try {
+                                                    var scFunc = new JSONSchemaSmartContractFunction(jsonSchemaFunc, SmartContractFunctionType.Execute);
+                                                    executeFunctions.push(scFunc);
+                                                } catch (ex) {}
+                                            });
+                                        } else if (jsonSchema.title == 'QueryMsg') {
+                                            jsonSchema.anyOf.forEach((jsonSchemaFunc: any) => {
+                                                try {
+                                                    var scFunc = new JSONSchemaSmartContractFunction(jsonSchemaFunc, SmartContractFunctionType.Query);
+                                                    queryFunctions.push(scFunc);
+                                                } catch (ex) {}
+                                            });
+                                        }
+                                    }
+    
+                                    iresolve();
+                                });
+                            });
+                        })).then(() => {
+                            //console.dir(initFuncton);
+                            //console.dir(executeFunctions);
+                            //console.dir(queryFunctions);
+                            resolve({
+                                instantiateFunction: initFuncton,
+                                executeFunctions: executeFunctions,
+                                queryFunctions: queryFunctions
+                            });
+                        });
+                    } else {
+                        reject(new Error("Workspace does not contain JSON schemas in the '/schemas' directory."));
+                    }
+                });
+            }).catch((err) => {
+                reject(err);
+            });
+        });
+
+        return promise;
+    }
+
+    // Attempts to find a contract by address... if address is not provided or undefined, will find the contract by label
+    static findContract(provenance: Provenance, addr: (string | undefined) = undefined): Promise<Contract> {
+        return new Promise<Contract>((resolve, reject) => {
+            Utils.loadProvenanceConfig().then((config) => {
+                if (addr) {
+                    provenance.getContractByAddress(addr).then((contract) => {
+                        resolve(contract);
+                    }).catch((err) => {
+                        reject(err);
+                    });
+                } else {
+                    provenance.getContractByContractLabel(config.contractLabel).then((contract) => {
+                        resolve(contract);
+                    }).catch((err) => {
+                        reject(err);
+                    });
+                }
+            }).catch((err) => {
+                reject(err);
+            });
+        });
     }
 
     static isValidUrl(url: string): boolean {
@@ -246,7 +341,7 @@ export class Utils {
         return true;
     };
 
-    static getRepoRemoteUrl(): Promise<string> {
+    static getRepoRemoteUrl(defaultUrl: (string | undefined) = undefined): Promise<string> {
         return new Promise<string>((resolve, reject) => {
             const git = SimpleGit(Utils.getWorkspaceFolder());
             git.getRemotes(true).then((remotes: RemoteWithRefs[]) => {
@@ -266,11 +361,39 @@ export class Utils {
                     if (Utils.isValidUrl(originRemote)) {
                         resolve(originRemote);
                     } else {
-                        reject(new Error('Origin url appears invalid.'));
+                        if (defaultUrl) {
+                            resolve(defaultUrl);
+                        } else {
+                            reject(new Error('Origin url appears invalid.'));
+                        }
                     }
                 } else {
-                    reject(new Error('Origin remote not found. Workspace not a git repo?'));
+                    if (defaultUrl) {
+                        resolve(defaultUrl);
+                    } else {
+                        reject(new Error('Origin remote not found. Workspace not a git repo?'));
+                    }
                 }
+            }).catch((err) => {
+                if (defaultUrl) {
+                    resolve(defaultUrl);
+                } else {
+                    reject(err);
+                }
+            });
+        });
+    }
+
+    static getRepoRemoteUrlWithDefault(): Promise<string> {
+        return new Promise<string>((resolve, reject) => {
+            Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+                var defaultUrl: string = `https://unknown/url/to/${config.contractLabel}`;
+
+                Utils.getRepoRemoteUrl(defaultUrl).then((remoteUrl) => {
+                    resolve(remoteUrl);
+                }).catch((err) => {
+                    reject(err);
+                });
             }).catch((err) => {
                 reject(err);
             });
