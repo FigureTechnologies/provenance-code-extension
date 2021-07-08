@@ -1,9 +1,11 @@
 import * as React from "react";
 import './marker-details-view.scss';
 import { FaMinusSquare, FaPlus } from 'react-icons/fa';
-import { Button, Card, Col, Container, OverlayTrigger, Row, Tooltip } from 'react-bootstrap';
+import { Button, Card, Col, Container, OverlayTrigger, Row, Table, Tooltip } from 'react-bootstrap';
 import Dialog from 'react-bootstrap-dialog';
+
 import { Alert } from './app-binding';
+import { ProvenanceAccountBalance } from "./provenance-account-balance";
 import { ProvenanceKey } from './provenance-key';
 import { ProvenanceMarker } from './provenance-marker';
 import { Utils } from './app-utils';
@@ -12,7 +14,8 @@ import AddMarkerAccessModal from './add-marker-access-modal';
 
 interface MarkerDetailsViewProps {
     accountKeys: ProvenanceKey[],
-    marker: ProvenanceMarker
+    marker: ProvenanceMarker,
+    balances: ProvenanceAccountBalance[]
 }
 
 interface MarkerDetailsViewState {
@@ -36,6 +39,7 @@ export default class MarkerDetailsView extends React.Component<MarkerDetailsView
     render() {
         const marker = this.state.marker;
         const keys = this.props.accountKeys;
+        const balances = this.props.balances;
 
         const revokeAccess = (a) => {
             this.confirmRevokeAccessDialog.show({
@@ -116,6 +120,29 @@ export default class MarkerDetailsView extends React.Component<MarkerDetailsView
                                 <Col sm={9} className="markerDetailsField">{marker.marker_type}</Col>
                             </Row>
                         </Container>
+                    </Card.Body>
+                </Card>
+                <br />
+                <Card className="detailsCard">
+                    <Card.Header>Marker Balances</Card.Header>
+                    <Card.Body>
+                        { (balances.length == 0) && <div className="noAssetsMarkers">No Assets/Markers</div> }
+                        { (balances.length > 0) && <Table striped bordered hover responsive variant="dark" size="sm">
+                            <thead>
+                                <tr>
+                                    <th>Denom</th>
+                                    <th>Balance</th>
+                                </tr>
+                            </thead>
+                            <tbody className="markerDetailsField noselect">
+                                {balances.map((balance, idx) =>
+                                    <tr>
+                                        <td>{balance.denom}</td>
+                                        <td>{balance.amount}</td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </Table>}
                     </Card.Body>
                 </Card>
                 <br />
