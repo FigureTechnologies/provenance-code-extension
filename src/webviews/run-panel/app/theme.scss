@@ -18,3 +18,15 @@ $theme-colors: (
             user-select: none; /* Non-prefixed version, currently
                                   supported by Chrome, Edge, Opera and Firefox */
 }
+
+.btn:focus {
+  outline: none !important;
+  outline-offset: none !important;
+}
+
+a {
+  :focus {
+    outline: none !important;
+    outline-offset: none !important;
+  }
+}

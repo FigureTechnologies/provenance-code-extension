@@ -100,7 +100,7 @@ export default class SmartContractInfoView extends React.Component<SmartContract
                                 </Row>
                                 <Row className="contractInfoField">
                                     <Col sm={3}>Source:</Col>
-                                    <Col sm={9}>{info.source}</Col>
+                                    <Col sm={9}><a href={info.source} className="source">{info.source}</a></Col>
                                 </Row>
                                 <Row className="contractInfoField">
                                     <Col sm={3}>Code Id:</Col>
@@ -134,7 +134,7 @@ export default class SmartContractInfoView extends React.Component<SmartContract
                                 </Row>
                                 <Row className="nonSingletonContractInfoField">
                                     <Col sm={3}>Source:</Col>
-                                    <Col sm={9}>{this.state.selectedContract ? this.state.selectedContract.source : ''}</Col>
+                                    <Col sm={9}><a href={this.state.selectedContract ? this.state.selectedContract.source : '#'} className="source">{this.state.selectedContract ? this.state.selectedContract.source : ''}</a></Col>
                                 </Row>
                                 <Row className="nonSingletonContractInfoField">
                                     <Col sm={3}>Code Id:</Col>
