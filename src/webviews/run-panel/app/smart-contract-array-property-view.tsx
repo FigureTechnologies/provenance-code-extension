@@ -7,13 +7,23 @@ import './smart-contract-array-property-view.scss';
 
 interface SmartContractArrayPropertyViewProps {
     property: SmartContractFunctionProperty,
-    index: number
+    index: number,
+    value: any,
+    onChange(value: any): void
 }
 
-export default class SmartContractArrayPropertyView extends React.Component<SmartContractArrayPropertyViewProps> implements ISmartContractPropertyView {
+interface SmartContractArrayPropertyViewState {
+    value: number;
+}
+
+export default class SmartContractArrayPropertyView extends React.Component<SmartContractArrayPropertyViewProps, SmartContractArrayPropertyViewState> implements ISmartContractPropertyView {
 
     constructor(props: any) {
         super(props);
+
+        this.state = {
+            value: this.props.value
+        };
     }
 
     _inputs;
@@ -43,6 +53,14 @@ export default class SmartContractArrayPropertyView extends React.Component<Smar
     toJSON(): any {
         // TODO
         return [];
+    }
+
+    get value(): any {
+        return this.state.value;
+    }
+
+    set value(val: any) {
+        this.setState({ value: val });
     }
 
 }

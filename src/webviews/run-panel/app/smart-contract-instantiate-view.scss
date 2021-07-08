@@ -40,6 +40,10 @@
     border-color: #fff;
 }
 
+.paramsPane {
+    padding-top: 20px;
+}
+
 .container.sectionHeader {
     padding-left: 0px;
     padding-right: 0px;
@@ -48,3 +52,12 @@
 .sectionHeaderTitle {
     margin: 0px auto;
 }
+
+.noParams {
+    margin-bottom: 20px;
+}
+
+.paramsJSONEditor {
+    width: auto;
+}
+

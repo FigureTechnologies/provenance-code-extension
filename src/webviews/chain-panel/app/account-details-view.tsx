@@ -108,7 +108,7 @@ export default class AccountDetailsView extends React.Component<AccountDetailsVi
                                                 delay={{ show: 250, hide: 400 }}
                                                 overlay={renderSendCoinsTooltip}
                                             >
-                                                <span className="markerAction"><a href="#" className="actions" onClick={() => sendCoins(balance.denom)}><FaArrowCircleRight /></a></span>
+                                                <span className="accountAction"><a href="#" className="actions" onClick={() => sendCoins(balance.denom)}><FaArrowCircleRight /></a></span>
                                             </OverlayTrigger>}
                                         </td>
                                     </tr>

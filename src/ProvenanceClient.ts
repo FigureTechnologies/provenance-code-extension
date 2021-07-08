@@ -338,25 +338,36 @@ export class Provenance {
 		return promise;
 	}
 
-	instantiateWasm(codeId: number, initArgs: any, label: string): Promise<void> {
-		// reload the settings
-		this.loadSettings();
+	instantiateWasm(codeId: number, initArgs: any, label: string, from: (string | undefined) = undefined): Promise<any> {
+		const promise = new Promise<any>((resolve, reject) => {
+			// reload the settings
+			this.loadSettings();
 
-		// build the command
-		const command = this.buildCommand([
-			ProvenanceCommand.TX, 
-			TransactionCommand.WASM, 
-			WASMTransactionCommand.Instantiate, 
-			codeId.toString(),
-			JSON.stringify(initArgs)
-		], {}, {
-			"--label": `${label}`,
-			"--admin": this.settings.adminAddress || this.getAddressForKey(this.settings.signingPrivateKey || "")
-		}, true);
+			// use the from signing key
+			var overrides: {[k: string]: any} = {};
+			if (from) {
+				overrides[ProvenanceClientFlags.From] = this.getAddressForKey(from);
+			}
 
-		const promise = new Promise<void>((resolve, reject) => {
-			Utils.runCommand(command).then (() => {
-				resolve();
+			// build the command
+			const command = this.buildCommand([
+				ProvenanceCommand.TX, 
+				TransactionCommand.WASM, 
+				WASMTransactionCommand.Instantiate, 
+				codeId.toString(),
+				JSON.stringify(initArgs)
+			], overrides, {
+				"--label": `${label}`,
+				"--admin": this.settings.adminAddress || this.getAddressForKey(this.settings.signingPrivateKey || "")
+			}, true);
+			
+			let result: any = {};
+			let result_data: string = '';
+			Utils.runCommand(command, (data: string) => {
+				result_data = result_data + data;
+			}).then (() => {
+				result = JSON.parse(result_data);
+				resolve(result);
 			}).catch((err) => {
 				reject(new Error("Failed to instantiate the contract"));
 			});
@@ -673,6 +684,31 @@ export class Provenance {
 		return promise;
 	}
 
+	getLatestCodeIdBySourceRepo(repo: string): Promise<number> {
+		const promise = new Promise<number>((resolve, reject) => {
+			// reload the settings
+			this.loadSettings();
+
+			let latestCodeId: number = -1;
+
+			const codeList = child_process.execSync(`${this.settings.clientBinary || 'provenanced'} query wasm list-code -o json`);
+			const codeInfos: ProvenanceCodeInfo[] = JSON.parse(codeList.toString()).code_infos;
+			if (codeInfos) {
+				codeInfos.forEach((codeInfo: ProvenanceCodeInfo) => {
+					if (codeInfo.source.toLocaleLowerCase() == repo.toLocaleLowerCase()) {
+						latestCodeId = (codeInfo.code_id > latestCodeId ? codeInfo.code_id : latestCodeId);
+					}
+				});
+
+				resolve(latestCodeId);
+			} else {
+				resolve(-1);
+			}
+		});
+
+		return promise;
+	}
+
 	getContractByCodeId(codeId: number): (Contract | undefined) {
 		let foundContract = undefined;
 
@@ -723,13 +759,71 @@ export class Provenance {
 				if (foundContract) {
 					resolve(foundContract);
 				} else {
-					reject(new Error(`Unable to locate contract '${label}'`));
+					reject(new Error(`Unable to locate contract by label '${label}'`));
 				}
 			} else {
-				reject(new Error(`Unable to locate contract '${label}'`));
+				reject(new Error(`Unable to locate contract by label '${label}'`));
 			}
 		});
 	}
+
+	getContractByAddress(addr: string): Promise<Contract> {
+		return new Promise<Contract>((resolve, reject) => {
+			// reload the settings
+			this.loadSettings();
+
+			this.getAllContracts().then((contracts) => {
+				var foundContract: (Contract | undefined) = contracts.find((contract) => { return (contract.address == addr); });
+				if (foundContract) {
+					resolve(foundContract);
+				} else {
+					reject(new Error(`Unable to locate contract by address '${addr}'`));
+				}
+			}).catch((err) => {
+				reject(err);
+			});
+		});
+	}
+
+	getAllContracts(): Promise<Contract[]> {
+		return new Promise<Contract[]>((resolve, reject) => {
+			var contracts: Contract[] = [];
+
+			// reload the settings
+			this.loadSettings();
+
+			const codeList = child_process.execSync(`${this.settings.clientBinary || 'provenanced'} query wasm list-code -o json`);
+			const codeInfos: ProvenanceCodeInfo[] = JSON.parse(codeList.toString()).code_infos;
+			if (codeInfos) {
+				codeInfos.forEach((codeInfo: ProvenanceCodeInfo) => {
+					const contractList = child_process.execSync(`${this.settings.clientBinary || 'provenanced'} query wasm list-contract-by-code ${codeInfo.code_id ? codeInfo.code_id : codeInfo.id} -o json`);
+					const contractAddresses: string[] = JSON.parse(contractList.toString()).contracts;
+					if (contractAddresses) {
+						contractAddresses.forEach((contractAddress: string) => {
+							const contractData = child_process.execSync(`${this.settings.clientBinary || 'provenanced'} query wasm contract ${contractAddress} ${this.settings.testNet ? ProvenanceClientFlags.TestNet : ''} -o json`);
+							const contract: Contract = JSON.parse(contractData.toString());
+							if (contract) {
+								contracts.push(contract);
+							}
+						});
+					}
+				});
+			}
+
+			resolve(contracts);
+		});
+	}
+
+	getAllContractsByContractLabel(label: string): Promise<Contract[]> {
+		return new Promise<Contract[]>((resolve, reject) => {
+			this.getAllContracts().then((contracts) => {
+				var found_contracts = contracts.filter((contract) => { return (contract.contract_info.label == label); });
+				resolve(found_contracts);
+			}).catch((err) => {
+				reject(err);
+			});
+		});
+	};
 
 	getAccountBalances(address: string): Promise<AssetHolding[]> {
 		return new Promise<AssetHolding[]>((resolve, reject) => {

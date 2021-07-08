@@ -26,10 +26,19 @@ export enum Command {
     DataChange = 'data-change',
     Alert = 'alert',
     ClearAlerts = 'clear-alerts',
+    InstantiateContractRequest = 'instantiate-contract-request',
+    InstantiateContractResponse = 'instantiate-contract-response',
     ExecuteFunctionRequest = 'execute-function-request',
     ExecuteFunctionResponse = 'execute-function-response',
     QueryFunctionRequest = 'query-function-request',
-    QueryFunctionResponse = 'query-function-response'
+    QueryFunctionResponse = 'query-function-response',
+    MigrateContractRequest = 'migrate-contract-request',
+    MigrateContractResponse = 'migrate-contract-response'
+}
+
+export enum CommandResult {
+    Success = 'success',
+    Error = 'error'
 }
 
 export interface Event {
@@ -39,6 +48,7 @@ export interface Event {
 
 export enum DataBinding {
     ContractInfo = 'contractInfo',
+    ContractInstances = 'contractInstances',
     ExecuteFunctions = 'executeFunctions',
     QueryFunctions = 'queryFunctions',
     SigningKeys = "signingKeys",
@@ -58,9 +68,18 @@ export interface DataChangeEvent extends EventData {
     value: any
 }
 
-export enum ExecuteFunctionResult {
-    Success = 'success',
-    Error = 'error',
+export interface InstantiateContractRequestEvent extends EventData {
+    id: string,
+    name: string,
+    args: any,
+    key: (string | undefined)
+}
+
+export interface InstantiateContractResponseEvent extends EventData {
+    id: string,
+    result: CommandResult,
+    data: any,
+    error: Error
 }
 
 export interface ExecuteFunctionCoin {
@@ -70,6 +89,7 @@ export interface ExecuteFunctionCoin {
 
 export interface ExecuteFunctionRequestEvent extends EventData {
     id: string,
+    addr: (string | undefined),
     func: SmartContractFunction,
     args: any,
     key: (string | undefined),
@@ -78,26 +98,34 @@ export interface ExecuteFunctionRequestEvent extends EventData {
 
 export interface ExecuteFunctionResponseEvent extends EventData {
     id: string,
-    result: ExecuteFunctionResult,
+    result: CommandResult,
     data: any,
     error: Error
 }
 
-export enum QueryFunctionResult {
-    Success = 'success',
-    Error = 'error',
-}
-
 export interface QueryFunctionRequestEvent extends EventData {
     id: string,
+    addr: (string | undefined),
     func: SmartContractFunction,
     args: any
 }
 
 export interface QueryFunctionResponseEvent extends EventData {
     id: string,
-    result: QueryFunctionResult,
+    result: CommandResult,
     data: any,
+    error: Error
+}
+
+export interface MigrateContractRequestEvent extends EventData {
+    id: string,
+    addr: string,
+    codeId: number
+}
+
+export interface MigrateContractResponseEvent extends EventData {
+    id: string,
+    result: CommandResult,
     error: Error
 }
 
@@ -110,6 +138,7 @@ export class RunViewAppBinding {
     public isReady: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(false);
 
     private _contractInfo: BehaviorSubject<SmartContractInfo> = new BehaviorSubject<SmartContractInfo>(EmptySmartContractInfo);
+    private _contractInstances: BehaviorSubject<SmartContractInfo[]> = new BehaviorSubject<SmartContractInfo[]>([]);
     private _signingKeys: BehaviorSubject<SigningKey[]> = new BehaviorSubject<SigningKey[]>([]);
     private _markers: BehaviorSubject<ProvenanceMarker[]> = new BehaviorSubject<ProvenanceMarker[]>([]);
     private _executeFunctions: BehaviorSubject<SmartContractFunction[]> = new BehaviorSubject<SmartContractFunction[]>([]);
@@ -144,10 +173,10 @@ export class RunViewAppBinding {
                 const execFuncReq = event.data as ExecuteFunctionRequestEvent;
                 console.log(`Received request ${execFuncReq.id} to execute function ${execFuncReq.func.name} as ${execFuncReq.key}`);
                 if (this.onExecuteRequestHandler) {
-                    this.onExecuteRequestHandler(execFuncReq.func, execFuncReq.args, execFuncReq.key, execFuncReq.coin, (result: any) => {
-                        this.postExecuteFunctionResponseEvent(execFuncReq.id, ExecuteFunctionResult.Success, result, undefined);
+                    this.onExecuteRequestHandler(execFuncReq.addr, execFuncReq.func, execFuncReq.args, execFuncReq.key, execFuncReq.coin, (result: any) => {
+                        this.postExecuteFunctionResponseEvent(execFuncReq.id, CommandResult.Success, result, undefined);
                     }, (err: Error) => {
-                        this.postExecuteFunctionResponseEvent(execFuncReq.id, ExecuteFunctionResult.Error, undefined, err);
+                        this.postExecuteFunctionResponseEvent(execFuncReq.id, CommandResult.Error, undefined, err);
                     });
                 }
             } break;
@@ -156,10 +185,34 @@ export class RunViewAppBinding {
                 const queryFuncReq = event.data as QueryFunctionRequestEvent;
                 console.log(`Received request ${queryFuncReq.id} to query function ${queryFuncReq.func.name}`);
                 if (this.onQueryRequestHandler) {
-                    this.onQueryRequestHandler(queryFuncReq.func, queryFuncReq.args, (result: any) => {
-                        this.postQueryFunctionResponseEvent(queryFuncReq.id, QueryFunctionResult.Success, result, undefined);
+                    this.onQueryRequestHandler(queryFuncReq.addr, queryFuncReq.func, queryFuncReq.args, (result: any) => {
+                        this.postQueryFunctionResponseEvent(queryFuncReq.id, CommandResult.Success, result, undefined);
                     }, (err: Error) => {
-                        this.postQueryFunctionResponseEvent(queryFuncReq.id, QueryFunctionResult.Error, undefined, err);
+                        this.postQueryFunctionResponseEvent(queryFuncReq.id, CommandResult.Error, undefined, err);
+                    });
+                }
+            } break;
+
+            case Command.InstantiateContractRequest: {
+                const initContractReq = event.data as InstantiateContractRequestEvent;
+                console.log(`Received request ${initContractReq.id} to instantiate contract ${initContractReq.name} as ${initContractReq.key}`);
+                if (this.onInstantiateRequestHandler) {
+                    this.onInstantiateRequestHandler(initContractReq.name, initContractReq.args, initContractReq.key, (result: any) => {
+                        this.postInstantiateResponseEvent(initContractReq.id, CommandResult.Success, result, undefined);
+                    }, (err: Error) => {
+                        this.postInstantiateResponseEvent(initContractReq.id, CommandResult.Error, undefined, err);
+                    });
+                }
+            } break;
+
+            case Command.MigrateContractRequest: {
+                const migrateContractReq = event.data as MigrateContractRequestEvent;
+                console.log(`Received request ${migrateContractReq.id} to migrate contract ${migrateContractReq.addr} to ${migrateContractReq.codeId}`);
+                if (this.onMigrateRequestHandler) {
+                    this.onMigrateRequestHandler(migrateContractReq.addr, migrateContractReq.codeId, () => {
+                        this.postMigrateResponseEvent(migrateContractReq.id, CommandResult.Success, undefined);
+                    }, (err: Error) => {
+                        this.postMigrateResponseEvent(migrateContractReq.id, CommandResult.Error, err);
                     });
                 }
             } break;
@@ -173,6 +226,8 @@ export class RunViewAppBinding {
                 const dataChangeEvent: DataChangeEvent = event.data as DataChangeEvent;
                 if (dataChangeEvent.name == DataBinding.ContractInfo) {
                     this._contractInfo.next(dataChangeEvent.value);
+                } else if (dataChangeEvent.name == DataBinding.ContractInstances) {
+                    this._contractInstances.next(dataChangeEvent.value);
                 } else if(dataChangeEvent.name == DataBinding.SigningKeys) {
                     this._signingKeys.next(dataChangeEvent.value);
                 } else if(dataChangeEvent.name == DataBinding.Markers) {
@@ -208,6 +263,22 @@ export class RunViewAppBinding {
                 console.dir(queryFunctionResponseEvent);
                 if (queryFunctionResponseEvent.id in this.responseHandlers) {
                     this.responseHandlers[queryFunctionResponseEvent.id](queryFunctionResponseEvent);
+                }
+            } break;
+
+            case Command.InstantiateContractResponse: {
+                const initContractRes: InstantiateContractResponseEvent = event.data as InstantiateContractResponseEvent;
+                console.dir(initContractRes);
+                if (initContractRes.id in this.responseHandlers) {
+                    this.responseHandlers[initContractRes.id](initContractRes);
+                }
+            } break;
+
+            case Command.MigrateContractResponse: {
+                const migrateContractRes: MigrateContractResponseEvent = event.data as MigrateContractResponseEvent;
+                console.dir(migrateContractRes);
+                if (migrateContractRes.id in this.responseHandlers) {
+                    this.responseHandlers[migrateContractRes.id](migrateContractRes);
                 }
             } break;
         }
@@ -274,6 +345,13 @@ export class RunViewAppBinding {
     public get contractInfo(): SmartContractInfo { return this._contractInfo.value }
     public get contractInfoObservable(): Observable<SmartContractInfo> { return this._contractInfo }
 
+    public set contractInstances(instances: SmartContractInfo[]) {
+        this._contractInstances.next(instances);
+        this.postDataChangeEvent(DataBinding.ContractInstances, this._contractInstances.value);
+    }
+    public get contractInstances(): SmartContractInfo[] { return this._contractInstances.value }
+    public get contractInstancesObservable(): Observable<SmartContractInfo[]> { return this._contractInstances }
+
     public set signingKeys(keys: SigningKey[]) {
         this._signingKeys.next(keys);
         this.postDataChangeEvent(DataBinding.SigningKeys, this._signingKeys.value);
@@ -288,10 +366,10 @@ export class RunViewAppBinding {
     public get markers(): ProvenanceMarker[] { return this._markers.value }
     public get markersObservable(): Observable<ProvenanceMarker[]> { return this._markers }
 
-    onExecuteRequest(handler: ((func: SmartContractFunction, args: any, key: (string | undefined), coin: (ExecuteFunctionCoin | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => void)) {
+    onExecuteRequest(handler: ((addr: (string | undefined), func: SmartContractFunction, args: any, key: (string | undefined), coin: (ExecuteFunctionCoin | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => void)) {
         this.onExecuteRequestHandler = handler;
     }
-    private onExecuteRequestHandler: ((func: SmartContractFunction, args: any, key: (string | undefined), coin: (ExecuteFunctionCoin | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+    private onExecuteRequestHandler: ((addr: (string | undefined), func: SmartContractFunction, args: any, key: (string | undefined), coin: (ExecuteFunctionCoin | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
 
     public set executeFunctions(funcs: SmartContractFunction[]) {
         this._executeFunctions.next(funcs);
@@ -300,10 +378,10 @@ export class RunViewAppBinding {
     public get executeFunctions(): SmartContractFunction[] { return this._executeFunctions.value }
     public get executeFunctionsObservable(): Observable<SmartContractFunction[]> { return this._executeFunctions }
 
-    onQueryRequest(handler: ((func: SmartContractFunction, args: any, resolve: ((result: any) => void), reject: ((err: Error) => void)) => void)) {
+    onQueryRequest(handler: ((addr: (string | undefined), func: SmartContractFunction, args: any, resolve: ((result: any) => void), reject: ((err: Error) => void)) => void)) {
         this.onQueryRequestHandler = handler;
     }
-    private onQueryRequestHandler: ((func: SmartContractFunction, args: any, resolve: ((result: any) => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+    private onQueryRequestHandler: ((addr: (string | undefined), func: SmartContractFunction, args: any, resolve: ((result: any) => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
 
     public set queryFunctions(funcs: SmartContractFunction[]) {
         this._queryFunctions.next(funcs);
@@ -315,11 +393,45 @@ export class RunViewAppBinding {
     public get alerts(): AlertEvent[] { return this._alerts.value }
     public get alertsObservable(): Observable<AlertEvent[]> { return this._alerts }
 
+    onInstantiateRequest(handler: ((name: string, args: any, key: (string | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => void)) {
+        this.onInstantiateRequestHandler = handler;
+    }
+    private onInstantiateRequestHandler: ((name: string, args: any, key: (string | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public instantiateContract(contract: SmartContractInfo, args: any, signingKey: string): Promise<any> {
+        return new Promise<any>((resolve, reject) => {
+            if (this._vscode) {
+                const initContractReqData: InstantiateContractRequestEvent = {
+                    id: uuidv4(),
+                    name: contract.name,
+                    args: args,
+                    key: signingKey
+                };
+                const initContractReqMessage: Event = {
+                    command: Command.InstantiateContractRequest,
+                    data: initContractReqData
+                };
+                this.registerResponse(initContractReqData.id, (eventData: EventData) => {
+                    const initContractResMessage = eventData as InstantiateContractResponseEvent;
+                    if (initContractResMessage.result == CommandResult.Success) {
+                        resolve(initContractResMessage.data);
+                    } else {
+                        reject(initContractResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(initContractReqMessage);
+            } else {
+                reject(new Error('Cannot instantiate contracts from VSCode'));
+            }
+        });
+    }
+
     public executeFunction(func: SmartContractFunction, args: any): Promise<any> {
         return new Promise<any>((resolve, reject) => {
             if (this._vscode) {
                 const execFuncReqData: ExecuteFunctionRequestEvent = {
                     id: uuidv4(),
+                    addr: undefined,
                     func: func,
                     args: args,
                     key: undefined,
@@ -331,7 +443,37 @@ export class RunViewAppBinding {
                 };
                 this.registerResponse(execFuncReqData.id, (eventData: EventData) => {
                     const execFuncResMessage = eventData as ExecuteFunctionResponseEvent;
-                    if (execFuncResMessage.result == ExecuteFunctionResult.Success) {
+                    if (execFuncResMessage.result == CommandResult.Success) {
+                        resolve(execFuncResMessage.data);
+                    } else {
+                        reject(execFuncResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(execFuncReqMessage);
+            } else {
+                reject(new Error('Cannot execute functions from VSCode'));
+            }
+        });
+    }
+
+    public executeFunctionInstance(addr: string, func: SmartContractFunction, args: any): Promise<any> {
+        return new Promise<any>((resolve, reject) => {
+            if (this._vscode) {
+                const execFuncReqData: ExecuteFunctionRequestEvent = {
+                    id: uuidv4(),
+                    addr: addr,
+                    func: func,
+                    args: args,
+                    key: undefined,
+                    coin: undefined
+                };
+                const execFuncReqMessage: Event = {
+                    command: Command.ExecuteFunctionRequest,
+                    data: execFuncReqData
+                };
+                this.registerResponse(execFuncReqData.id, (eventData: EventData) => {
+                    const execFuncResMessage = eventData as ExecuteFunctionResponseEvent;
+                    if (execFuncResMessage.result == CommandResult.Success) {
                         resolve(execFuncResMessage.data);
                     } else {
                         reject(execFuncResMessage.error);
@@ -349,6 +491,7 @@ export class RunViewAppBinding {
             if (this._vscode) {
                 const execFuncReqData: ExecuteFunctionRequestEvent = {
                     id: uuidv4(),
+                    addr: undefined,
                     func: func,
                     args: args,
                     key: undefined,
@@ -363,7 +506,40 @@ export class RunViewAppBinding {
                 };
                 this.registerResponse(execFuncReqData.id, (eventData: EventData) => {
                     const execFuncResMessage = eventData as ExecuteFunctionResponseEvent;
-                    if (execFuncResMessage.result == ExecuteFunctionResult.Success) {
+                    if (execFuncResMessage.result == CommandResult.Success) {
+                        resolve(execFuncResMessage.data);
+                    } else {
+                        reject(execFuncResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(execFuncReqMessage);
+            } else {
+                reject(new Error('Cannot execute functions from VSCode'));
+            }
+        });
+    }
+
+    public executeFunctionInstanceWithCoin(addr: string, func: SmartContractFunction, args: any, amount: number, denom: string): Promise<any> {
+        return new Promise<any>((resolve, reject) => {
+            if (this._vscode) {
+                const execFuncReqData: ExecuteFunctionRequestEvent = {
+                    id: uuidv4(),
+                    addr: addr,
+                    func: func,
+                    args: args,
+                    key: undefined,
+                    coin: {
+                        amount: amount,
+                        denom: denom
+                    }
+                };
+                const execFuncReqMessage: Event = {
+                    command: Command.ExecuteFunctionRequest,
+                    data: execFuncReqData
+                };
+                this.registerResponse(execFuncReqData.id, (eventData: EventData) => {
+                    const execFuncResMessage = eventData as ExecuteFunctionResponseEvent;
+                    if (execFuncResMessage.result == CommandResult.Success) {
                         resolve(execFuncResMessage.data);
                     } else {
                         reject(execFuncResMessage.error);
@@ -381,6 +557,7 @@ export class RunViewAppBinding {
             if (this._vscode) {
                 const execFuncReqData: ExecuteFunctionRequestEvent = {
                     id: uuidv4(),
+                    addr: undefined,
                     func: func,
                     args: args,
                     key: signingKey,
@@ -392,7 +569,37 @@ export class RunViewAppBinding {
                 };
                 this.registerResponse(execFuncReqData.id, (eventData: EventData) => {
                     const execFuncResMessage = eventData as ExecuteFunctionResponseEvent;
-                    if (execFuncResMessage.result == ExecuteFunctionResult.Success) {
+                    if (execFuncResMessage.result == CommandResult.Success) {
+                        resolve(execFuncResMessage.data);
+                    } else {
+                        reject(execFuncResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(execFuncReqMessage);
+            } else {
+                reject(new Error('Cannot execute functions from VSCode'));
+            }
+        });
+    }
+
+    public executeFunctionInstanceAs(addr: string, func: SmartContractFunction, args: any, signingKey: string): Promise<any> {
+        return new Promise<any>((resolve, reject) => {
+            if (this._vscode) {
+                const execFuncReqData: ExecuteFunctionRequestEvent = {
+                    id: uuidv4(),
+                    addr: addr,
+                    func: func,
+                    args: args,
+                    key: signingKey,
+                    coin: undefined
+                };
+                const execFuncReqMessage: Event = {
+                    command: Command.ExecuteFunctionRequest,
+                    data: execFuncReqData
+                };
+                this.registerResponse(execFuncReqData.id, (eventData: EventData) => {
+                    const execFuncResMessage = eventData as ExecuteFunctionResponseEvent;
+                    if (execFuncResMessage.result == CommandResult.Success) {
                         resolve(execFuncResMessage.data);
                     } else {
                         reject(execFuncResMessage.error);
@@ -410,6 +617,7 @@ export class RunViewAppBinding {
             if (this._vscode) {
                 const execFuncReqData: ExecuteFunctionRequestEvent = {
                     id: uuidv4(),
+                    addr: undefined,
                     func: func,
                     args: args,
                     key: signingKey,
@@ -424,7 +632,40 @@ export class RunViewAppBinding {
                 };
                 this.registerResponse(execFuncReqData.id, (eventData: EventData) => {
                     const execFuncResMessage = eventData as ExecuteFunctionResponseEvent;
-                    if (execFuncResMessage.result == ExecuteFunctionResult.Success) {
+                    if (execFuncResMessage.result == CommandResult.Success) {
+                        resolve(execFuncResMessage.data);
+                    } else {
+                        reject(execFuncResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(execFuncReqMessage);
+            } else {
+                reject(new Error('Cannot execute functions from VSCode'));
+            }
+        });
+    }
+
+    public executeFunctionInstanceAsWithCoin(addr: string, func: SmartContractFunction, args: any, signingKey: string, amount: number, denom: string): Promise<any> {
+        return new Promise<any>((resolve, reject) => {
+            if (this._vscode) {
+                const execFuncReqData: ExecuteFunctionRequestEvent = {
+                    id: uuidv4(),
+                    addr: addr,
+                    func: func,
+                    args: args,
+                    key: signingKey,
+                    coin: {
+                        amount: amount,
+                        denom: denom
+                    }
+                };
+                const execFuncReqMessage: Event = {
+                    command: Command.ExecuteFunctionRequest,
+                    data: execFuncReqData
+                };
+                this.registerResponse(execFuncReqData.id, (eventData: EventData) => {
+                    const execFuncResMessage = eventData as ExecuteFunctionResponseEvent;
+                    if (execFuncResMessage.result == CommandResult.Success) {
                         resolve(execFuncResMessage.data);
                     } else {
                         reject(execFuncResMessage.error);
@@ -442,6 +683,7 @@ export class RunViewAppBinding {
             if (this._vscode) {
                 const queryFuncReqData: QueryFunctionRequestEvent = {
                     id: uuidv4(),
+                    addr: undefined,
                     func: func,
                     args: args
                 };
@@ -451,7 +693,7 @@ export class RunViewAppBinding {
                 };
                 this.registerResponse(queryFuncReqData.id, (eventData: EventData) => {
                     const queryFuncResMessage = eventData as QueryFunctionResponseEvent;
-                    if (queryFuncResMessage.result == QueryFunctionResult.Success) {
+                    if (queryFuncResMessage.result == CommandResult.Success) {
                         resolve(queryFuncResMessage.data);
                     } else {
                         reject(queryFuncResMessage.error);
@@ -459,7 +701,67 @@ export class RunViewAppBinding {
                 });
                 this._vscode.postMessage(queryFuncReqMessage);
             } else {
-                reject(new Error('Cannot execute functions from VSCode'));
+                reject(new Error('Cannot query functions from VSCode'));
+            }
+        });
+    }
+
+    public queryFunctionInstance(addr: string, func: SmartContractFunction, args: any): Promise<any> {
+        return new Promise<any>((resolve, reject) => {
+            if (this._vscode) {
+                const queryFuncReqData: QueryFunctionRequestEvent = {
+                    id: uuidv4(),
+                    addr: addr,
+                    func: func,
+                    args: args
+                };
+                const queryFuncReqMessage: Event = {
+                    command: Command.QueryFunctionRequest,
+                    data: queryFuncReqData
+                };
+                this.registerResponse(queryFuncReqData.id, (eventData: EventData) => {
+                    const queryFuncResMessage = eventData as QueryFunctionResponseEvent;
+                    if (queryFuncResMessage.result == CommandResult.Success) {
+                        resolve(queryFuncResMessage.data);
+                    } else {
+                        reject(queryFuncResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(queryFuncReqMessage);
+            } else {
+                reject(new Error('Cannot query functions from VSCode'));
+            }
+        });
+    }
+
+    onMigrateRequest(handler: ((addr: string, codeId: number, resolve: (() => void), reject: ((err: Error) => void)) => void)) {
+        this.onMigrateRequestHandler = handler;
+    }
+    private onMigrateRequestHandler: ((addr: string, codeId: number, resolve: (() => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public migrateContract(addr: string, codeId: number): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            if (this._vscode) {
+                const migrateContractReqData: MigrateContractRequestEvent = {
+                    id: uuidv4(),
+                    addr: addr,
+                    codeId: codeId
+                };
+                const migrateContractReqMessage: Event = {
+                    command: Command.MigrateContractRequest,
+                    data: migrateContractReqData
+                };
+                this.registerResponse(migrateContractReqData.id, (eventData: EventData) => {
+                    const migrateContractResMessage = eventData as MigrateContractResponseEvent;
+                    if (migrateContractResMessage.result == CommandResult.Success) {
+                        resolve();
+                    } else {
+                        reject(migrateContractResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(migrateContractReqMessage);
+            } else {
+                reject(new Error('Cannot migrate contracts from VSCode'));
             }
         });
     }
@@ -511,7 +813,7 @@ export class RunViewAppBinding {
         }
     }
 
-    private postExecuteFunctionResponseEvent(id: string, result: ExecuteFunctionResult, data: any, error: (Error | undefined)) {
+    private postExecuteFunctionResponseEvent(id: string, result: CommandResult, data: any, error: (Error | undefined)) {
         if (this._webview) {
             let event: Event = {
                 command: Command.ExecuteFunctionResponse,
@@ -526,7 +828,7 @@ export class RunViewAppBinding {
         }
     }
 
-    private postQueryFunctionResponseEvent(id: string, result: QueryFunctionResult, data: any, error: (Error | undefined)) {
+    private postQueryFunctionResponseEvent(id: string, result: CommandResult, data: any, error: (Error | undefined)) {
         if (this._webview) {
             let event: Event = {
                 command: Command.QueryFunctionResponse,
@@ -534,6 +836,35 @@ export class RunViewAppBinding {
                     id: id,
                     result: result,
                     data: data,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postInstantiateResponseEvent(id: string, result: CommandResult, data: any, error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.InstantiateContractResponse,
+                data: {
+                    id: id,
+                    result: result,
+                    data: data,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postMigrateResponseEvent(id: string, result: CommandResult, error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.MigrateContractResponse,
+                data: {
+                    id: id,
+                    result: result,
                     error: error
                 }
             };

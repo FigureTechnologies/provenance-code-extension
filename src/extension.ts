@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as glob from 'glob';
 import * as async from 'async';
 
+import { ArgParser } from './ArgParser';
 import { Utils } from './utils';
 import { Key, Marker, MarkerAccess, MarkerType, Provenance, ProvenanceConfig, ProvenanceKeyConfig, ProvenanceMarkerConfig, ProvenanceMarkerGrant } from './ProvenanceClient'
 
@@ -66,27 +67,22 @@ function compileWasm(): Promise<void> {
 
 function storeWasm(): Promise<number> {
 	return new Promise<number>((resolve, reject) => {
-		Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
-			var source: string = `https://unknown/url/to/${config.contractLabel}`;
-
-			Utils.getRepoRemoteUrl().then((remoteUrl: string) => {
-				source = remoteUrl;
-			}).catch((err: Error) => {
-			}).finally(() => {
-				glob(`artifacts/*.wasm`, { cwd: Utils.getWorkspaceFolder() }, function (err, files) {
-					if (err || files == undefined || files.length == 0) {
-						reject(new Error('WASM file not found!'));
-					} else {
-						// TODO: get builder???
-						provenance.storeWasm(files[0], source, 'cosmwasm/rust-optimizer:0.10.7').then((codeId: number) => {
-							lastWasmCodeId = codeId;
-							resolve(codeId);
-						}).catch((err: Error) => {
-							reject(err);
-						});
-					}
-				});
+		Utils.getRepoRemoteUrlWithDefault().then((remoteUrl: string) => {
+			glob(`artifacts/*.wasm`, { cwd: Utils.getWorkspaceFolder() }, function (err, files) {
+				if (err || files == undefined || files.length == 0) {
+					reject(new Error('WASM file not found!'));
+				} else {
+					// TODO: get builder???
+					provenance.storeWasm(files[0], remoteUrl, 'cosmwasm/rust-optimizer:0.10.7').then((codeId: number) => {
+						lastWasmCodeId = codeId;
+						resolve(codeId);
+					}).catch((err: Error) => {
+						reject(err);
+					});
+				}
 			});
+		}).catch((err) => {
+			reject(err);
 		});
 	});
 }
@@ -248,68 +244,6 @@ async function ensureMarkersExist(markers: ProvenanceMarkerConfig[]): Promise<vo
 	});
 }
 
-async function resolveArg(arg: string): Promise<any> {
-	return new Promise<any>((resolve, reject) => {
-		const call = arg.split("::");
-		const ns = call[0];
-		var args = call[1].split(/[(,) ]+/);
-		const func = args[0];
-		args.shift();
-		args.pop();
-
-		if (ns == 'provenance') {
-			if (func == 'getAddressForKey') {
-				// TODO: ensure # args is correct
-				resolve(provenance.getAddressForKey(args[0]));
-			} else if (func == 'getMarkerAddress') {
-				// TODO: ensure # args is correct
-				resolve(provenance.getMarkerAddress(args[0]));
-			} else {
-				reject(new Error(`Unknown function ${func} in namespace ${ns}`));
-			}
-		} else {
-			reject(new Error(`Unknown namespace ${ns}`));
-		}
-	});
-}
-
-async function generateInitArgs(args: any): Promise<any> {
-	return new Promise<any>((resolve, reject) => {
-		var initArgs: {[k: string]: any} = {};
-
-		Object.keys(args).forEach(async function (key) {
-			if (typeof args[key] == 'string') {
-				if (args[key].startsWith('${') && args[key].endsWith('}')) {
-					initArgs[key] = await resolveArg(args[key].slice(2, -1));
-				} else {
-					initArgs[key] = args[key];
-				}
-			} else if (Array.isArray(args[key])) {
-				initArgs[key] = [];
-				args[key].forEach(async (value: any) => {
-					if (typeof value == 'string') {
-						if (value.startsWith('${') && value.endsWith('}')) {
-							initArgs[key].push(await resolveArg(value.slice(2, -1)));
-						} else {
-							initArgs[key].push(value);
-						}
-					} else if (typeof value == 'object') {
-						initArgs[key].push(await generateInitArgs(value));
-					} else {
-						initArgs[key].push(value);
-					}
-				});
-			} else if (typeof args[key] == 'object') {
-				initArgs[key] = await generateInitArgs(args[key]);
-			} else {
-				initArgs[key] = args[key];
-			}
-		});
-
-		resolve(initArgs);
-	});
-}
-
 function instantiateOrMigrateWasm(codeId: number): Promise<void> {
 	const promise = new Promise<void>((resolve, reject) => {
 		// load the provenance config for the project
@@ -336,7 +270,7 @@ function instantiateOrMigrateWasm(codeId: number): Promise<void> {
 			// generate the init args
 			var initArgs = {};
 			try {
-				initArgs = await generateInitArgs(config.initArgs);
+				initArgs = await ArgParser.generateInitArgs(provenance, config.initArgs);
 				console.log('Using init args:');
 				console.dir(initArgs);
 			} catch (err) {
@@ -351,12 +285,17 @@ function instantiateOrMigrateWasm(codeId: number): Promise<void> {
 
 					// setup name binding for the contract
 					provenance.bindName(config.binding.name, config.binding.root, false).then(() => {
-						// instantiate the contract
-						provenance.instantiateWasm(codeId, initArgs, config.contractLabel).then(() => {
+						if (config.isSingleton) {
+							// instantiate the contract
+							provenance.instantiateWasm(codeId, initArgs, config.contractLabel).then(() => {
+								resolve();
+							}).catch((err: Error) => {
+								reject(err);
+							});
+						} else {
+							// Don't instantiate a non-singleton contract!
 							resolve();
-						}).catch((err: Error) => {
-							reject(err);
-						});
+						}
 					}).catch((err) => {
 						reject(err);
 					});
@@ -366,12 +305,17 @@ function instantiateOrMigrateWasm(codeId: number): Promise<void> {
 					// get the contract info
 					const contract = provenance.getContractByCodeId(latestCodeId);
 					if (contract) {
-						// migrate the contract
-						provenance.migrateWasm(contract, codeId).then(() => {
+						if (config.isSingleton) {
+							// migrate the contract
+							provenance.migrateWasm(contract, codeId).then(() => {
+								resolve();
+							}).catch((err: Error) => {
+								reject(err);
+							});
+						} else {
+							// Don't migrate a non-singleton contract!
 							resolve();
-						}).catch((err: Error) => {
-							reject(err);
-						});
+						}
 					} else {
 						reject(new Error(`Unable to locate contract info by code id ${latestCodeId}`));
 					}
@@ -771,58 +715,95 @@ export function activate(context: vscode.ExtensionContext) {
 					});
 				});
 
+				// hook up instantiate contract request handler
+				runViewApp.onInstantiateRequest((name: string, args: any, key: (string | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => {
+					console.log('onInstantiateRequest');
+
+					// TODO: source repo url from name?
+					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+						Utils.getRepoRemoteUrlWithDefault().then((remoteUrl: string) => {
+							provenance.getLatestCodeIdBySourceRepo(remoteUrl).then((latestCodeId: number) => {
+								console.log(`Latest codeId for ${name} (${remoteUrl}) is ${latestCodeId}`);
+								if (latestCodeId == -1) {
+									console.log('Instantiating contract...');
+								}
+
+								// setup name binding for the contract
+								provenance.bindName(config.binding.name, config.binding.root, false).then(() => {
+									// instantiate the contract
+									provenance.instantiateWasm(latestCodeId, args, name, key).then((result: any) => {
+										RunPanelViewUpdater.update(config);
+										resolve(result);
+									}).catch((err: Error) => {
+										reject(err);
+									});
+								}).catch((err) => {
+									reject(err);
+								});
+							});
+						});
+					});
+				});
+
+				// hook up migrate contract request handler
+				runViewApp.onMigrateRequest((addr: string, codeId: number, resolve: (() => void), reject: ((err: Error) => void)) => {
+					console.log('onMigrateRequest');
+
+					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
+						provenance.getContractByAddress(addr).then((contract) => {
+							provenance.migrateWasm(contract, codeId).then(() => {
+								RunPanelViewUpdater.update(config);
+								resolve();
+							}).catch((err) => {
+								reject(err);
+							});
+						}).catch((err) => {
+							reject (err);
+						});
+					});
+				});
+
 				// hook up execute function request handler
-				runViewApp.onExecuteRequest((func: SmartContractFunction, args: any, key: (string | undefined), coin: (ExecuteFunctionCoin | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => {
-					console.log('onExecuteRequest');
-					console.dir(coin);
+				runViewApp.onExecuteRequest((addr: (string | undefined), func: SmartContractFunction, args: any, key: (string | undefined), coin: (ExecuteFunctionCoin | undefined), resolve: ((result: any) => void), reject: ((err: Error) => void)) => {
+					console.log(`onExecuteRequest ${addr} : ${func.name} as ${key}`);
 					
 					var execMsg: {[k: string]: any} = {};
 					execMsg[func.name] = args;
 
-					Utils.loadProvenanceConfig().then((config) => {
-						provenance.getContractByContractLabel(config.contractLabel).then((contract) => {
-							var execute_promise;
-							if (coin) {
-								execute_promise = provenance.executeWithCoin(contract, execMsg, key, coin.amount, coin.denom);
-							} else {
-								execute_promise = provenance.execute(contract, execMsg, key);
-							}
-							execute_promise.then((result: any) => {
-								resolve(result);
-							}).catch((err) => {
-								vscode.window.showErrorMessage(err.message);
-								reject(err);
-							});
+					Utils.findContract(provenance, addr).then((contract) => {
+						var execute_promise;
+						if (coin) {
+							execute_promise = provenance.executeWithCoin(contract, execMsg, key, coin.amount, coin.denom);
+						} else {
+							execute_promise = provenance.execute(contract, execMsg, key);
+						}
+						execute_promise.then((result: any) => {
+							resolve(result);
 						}).catch((err) => {
 							vscode.window.showErrorMessage(err.message);
 							reject(err);
 						});
-					}).catch((err: Error) => {
+					}).catch((err) => {
 						vscode.window.showErrorMessage(err.message);
 						reject(err);
 					});
 				});
 
 				// hook up query function request handler
-				runViewApp.onQueryRequest((func: SmartContractFunction, args: any, resolve: ((result: any) => void), reject: ((err: Error) => void)) => {
-					console.log('onQueryRequest');
+				runViewApp.onQueryRequest((addr: (string | undefined), func: SmartContractFunction, args: any, resolve: ((result: any) => void), reject: ((err: Error) => void)) => {
+					console.log(`onQueryRequest ${addr} : ${func.name}`);
 
 					var queryMsg: {[k: string]: any} = {};
 					queryMsg[func.name] = args;
 
-					Utils.loadProvenanceConfig().then((config) => {
-						provenance.getContractByContractLabel(config.contractLabel).then((contract) => {
-							provenance.query(contract, queryMsg).then((result: any) => {
-								resolve(result);
-							}).catch((err) => {
-								vscode.window.showErrorMessage(err.message);
-								reject(err);
-							});
+					Utils.findContract(provenance, addr).then((contract) => {
+						provenance.query(contract, queryMsg).then((result: any) => {
+							resolve(result);
 						}).catch((err) => {
 							vscode.window.showErrorMessage(err.message);
 							reject(err);
 						});
-					}).catch((err: Error) => {
+					}).catch((err) => {
 						vscode.window.showErrorMessage(err.message);
 						reject(err);
 					});

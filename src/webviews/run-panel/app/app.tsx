@@ -25,12 +25,14 @@ interface AppProps {
 
 interface AppState {
     contractInfo: SmartContractInfo,
+    contractInstances: SmartContractInfo[],
     executeFunctions: SmartContractFunction[],
     queryFunctions: SmartContractFunction[],
     signingKeys: SigningKey[],
     markers: ProvenanceMarker[],
     alerts: AlertEvent[],
-    activeKey: string
+    activeKey: string,
+    activeContract: string
 }
 
 export class App extends React.Component<AppProps, AppState> {
@@ -55,17 +57,25 @@ export class App extends React.Component<AppProps, AppState> {
 
         this.state = {
             contractInfo: this.appBinding.contractInfo,
+            contractInstances: this.appBinding.contractInstances,
             executeFunctions: this.appBinding.executeFunctions,
             queryFunctions: this.appBinding.queryFunctions,
             signingKeys: this.appBinding.signingKeys,
             markers: this.appBinding.markers,
             alerts: [],
-            activeKey: ''
+            activeKey: '',
+            activeContract: ''
         }
 
         this.appBinding.contractInfoObservable.subscribe((contractInfo) => {
             this.setState({
                 contractInfo: contractInfo
+            });
+        });
+
+        this.appBinding.contractInstancesObservable.subscribe((contractInstances) => {
+            this.setState({
+                contractInstances: contractInstances
             });
         });
 
@@ -127,9 +137,17 @@ export class App extends React.Component<AppProps, AppState> {
             this.appBinding.clearAlert(id);
         };
 
+        const setActiveContract = (c) => {
+            this.setState({ activeContract: c.address });
+        };
+
         return (
             <Container className="rootContainer" fluid>
-                <SmartContractInfoView contractInfo={this.state.contractInfo}></SmartContractInfoView>
+                <SmartContractInfoView 
+                    contractInfo={this.state.contractInfo} 
+                    instances={this.state.contractInstances}
+                    onContractSelected={setActiveContract}
+                ></SmartContractInfoView>
                 <Tab.Container id="smart-contract-functions" defaultActiveKey={this.state.activeKey} onSelect={setActiveKey}>
 					<Row>
 						<Col sm={3}>
@@ -138,19 +156,19 @@ export class App extends React.Component<AppProps, AppState> {
                                     <Nav.Link disabled>Instantiate</Nav.Link>
                                 </Nav.Item>}
                                 {!this.state.contractInfo.isSingleton && <Nav.Item>
-                                    <Nav.Link eventKey="instantiate" active={isActiveKey("instantiate")}>Instantiate Contract</Nav.Link>
+                                    <Nav.Link eventKey="instantiate" key="instantiate" active={isActiveKey("instantiate")}>Instantiate Contract</Nav.Link>
                                 </Nav.Item>}
 								<Nav.Item><Nav.Link disabled>Execute</Nav.Link></Nav.Item>
                                 {this.state.executeFunctions.map((func, idx) =>
                                     <Nav.Item>
-									    <Nav.Link eventKey={func.name} active={isActiveKey(func.name)}>{func.name}</Nav.Link>
+									    <Nav.Link eventKey={func.name} key={func.name} active={isActiveKey(func.name)}>{func.name}</Nav.Link>
 								    </Nav.Item>
                                 )}
 								<Nav.Item></Nav.Item>
 								<Nav.Item><Nav.Link disabled>Query</Nav.Link></Nav.Item>
 								{this.state.queryFunctions.map((func, idx) =>
                                     <Nav.Item>
-									    <Nav.Link eventKey={func.name} active={isActiveKey(func.name)}>{func.name}</Nav.Link>
+									    <Nav.Link eventKey={func.name} key={func.name} active={isActiveKey(func.name)}>{func.name}</Nav.Link>
 								    </Nav.Item>
                                 )}
 							</Nav>
@@ -162,12 +180,12 @@ export class App extends React.Component<AppProps, AppState> {
                                 </Tab.Pane>}
                                 {this.state.executeFunctions.map((func, idx) =>
                                     <Tab.Pane eventKey={func.name} active={isActiveKey(func.name)}>
-                                        <SmartContractFunctionView function={func} index={idx} signingKeys={this.state.signingKeys} markers={this.state.markers}></SmartContractFunctionView>
+                                        <SmartContractFunctionView function={func} index={idx} contractAddress={this.state.activeContract} signingKeys={this.state.signingKeys} markers={this.state.markers}></SmartContractFunctionView>
                                     </Tab.Pane>
                                 )}
                                 {this.state.queryFunctions.map((func, idx) =>
                                     <Tab.Pane eventKey={func.name} active={isActiveKey(func.name)}>
-                                        <SmartContractFunctionView function={func} index={idx} signingKeys={[]} markers={[]}></SmartContractFunctionView>
+                                        <SmartContractFunctionView function={func} index={idx} contractAddress={this.state.activeContract} signingKeys={[]} markers={[]}></SmartContractFunctionView>
                                     </Tab.Pane>
                                 )}
 							</Tab.Content>

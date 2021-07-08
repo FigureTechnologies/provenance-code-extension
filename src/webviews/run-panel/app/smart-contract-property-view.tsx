@@ -10,11 +10,14 @@ import './smart-contract-property-view.scss';
 export interface ISmartContractPropertyView {
     isValid(): boolean;
     toJSON(): any;
+    value: any;
 }
 
 interface SmartContractPropertyViewProps {
     property: SmartContractFunctionProperty,
-    index: number
+    index: number,
+    value: any,
+    onChange(value: any): void
 }
 
 export class SmartContractPropertyView extends React.Component<SmartContractPropertyViewProps> implements ISmartContractPropertyView {
@@ -27,23 +30,20 @@ export class SmartContractPropertyView extends React.Component<SmartContractProp
     _propertyView: ISmartContractPropertyView;
 
     render() {
-        const prop = this.props.property;
-        const idx = this.props.index;
-
         let propComponent;
         if (this.props.property.type == 'string') {
-            propComponent = <SmartContractStringPropertyView property={prop} index={idx} ref={(c) => { this._propertyView = c; }}></SmartContractStringPropertyView>;
+            propComponent = <SmartContractStringPropertyView {...this.props} ref={(c) => { this._propertyView = c; }}></SmartContractStringPropertyView>;
         } else if (this.props.property.type == 'number') {
-            propComponent = <SmartContractNumberPropertyView property={prop} index={idx} ref={(c) => { this._propertyView = c; }}></SmartContractNumberPropertyView>;
+            propComponent = <SmartContractNumberPropertyView {...this.props} ref={(c) => { this._propertyView = c; }}></SmartContractNumberPropertyView>;
         } else if (this.props.property.type == 'integer') {
-            propComponent = <SmartContractIntegerPropertyView property={prop} index={idx} ref={(c) => { this._propertyView = c; }}></SmartContractIntegerPropertyView>;
+            propComponent = <SmartContractIntegerPropertyView {...this.props} ref={(c) => { this._propertyView = c; }}></SmartContractIntegerPropertyView>;
         } else if (this.props.property.type == 'object') {
             // TODO
             propComponent = <span>Unimplemented data type</span>
         } else if (this.props.property.type == 'array') {
-            propComponent = <SmartContractArrayPropertyView property={prop} index={idx} ref={(c) => { this._propertyView = c; }}></SmartContractArrayPropertyView>;
+            propComponent = <SmartContractArrayPropertyView {...this.props} ref={(c) => { this._propertyView = c; }}></SmartContractArrayPropertyView>;
         } else if (this.props.property.type == 'boolean') {
-            //propComponent = <SmartContractBoolPropertyView property={prop} index={idx} ref={(c) => { this._propertyView = c; }}></SmartContractBoolPropertyView>;
+            //propComponent = <SmartContractBoolPropertyView {...this.props} ref={(c) => { this._propertyView = c; }}></SmartContractBoolPropertyView>;
             // TODO
             propComponent = <span>Unimplemented data type</span>
         } else if (this.props.property.type == 'null') {
@@ -64,6 +64,20 @@ export class SmartContractPropertyView extends React.Component<SmartContractProp
 
     toJSON(): any {
         return (this._propertyView ? this._propertyView.toJSON() : null);
+    }
+
+    get value(): any {
+        if (this._propertyView) {
+            return this._propertyView.value;
+        } else {
+            return undefined;
+        }
+    }
+
+    set value(val: any) {
+        if (this._propertyView) {
+            this._propertyView.value = val;
+        }
     }
 
 }

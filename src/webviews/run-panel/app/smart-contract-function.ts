@@ -18,7 +18,14 @@ export interface SmartContractFunction {
     properties: SmartContractFunctionProperty[]
 }
 
+export const EmptySmartContractFunction: SmartContractFunction = {
+    name: '',
+    type: SmartContractFunctionType.Instantiate,
+    properties: []
+};
+
 export interface SmartContractFunctions {
+    instantiateFunction: SmartContractFunction,
     executeFunctions: SmartContractFunction[],
     queryFunctions: SmartContractFunction[]
 }

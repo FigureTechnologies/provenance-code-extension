@@ -15,6 +15,7 @@ import './smart-contract-function-view.scss';
 
 interface SmartContractFunctionViewProps {
     function: SmartContractFunction,
+    contractAddress: string,
     signingKeys: SigningKey[],
     markers: ProvenanceMarker[],
     index: number
@@ -77,7 +78,7 @@ export default class SmartContractFunctionView extends React.Component<SmartCont
                     </Button>
                     <DropdownButton as={ButtonGroup} variant="secondary" disabled={this.state.busy} title={this.state.signingKey}>
                         {keys.map((key, idx) =>
-                            <Dropdown.Item onSelect={setSigningKey} eventKey={key.name}>{key.name}</Dropdown.Item>
+                            <Dropdown.Item onSelect={setSigningKey} eventKey={key.name} key={key.name}>{key.name}</Dropdown.Item>
                         )}
                     </DropdownButton>
                 </ButtonGroup>;
@@ -109,13 +110,28 @@ export default class SmartContractFunctionView extends React.Component<SmartCont
                     <Form.Control type="text" placeholder="amount" disabled={!this.state.shouldSendCoin} ref={(c) => this._coinAmountInput = c} />
                     <DropdownButton as={InputGroup.Append} variant="secondary" title={this.state.sendCoin.denom} disabled={!this.state.shouldSendCoin}>
                         {markers.map((marker, idx) =>
-                            <Dropdown.Item onSelect={setSendCoinMarker} eventKey={marker.denom}>{marker.denom}</Dropdown.Item>
+                            <Dropdown.Item onSelect={setSendCoinMarker} eventKey={marker.denom} key={marker.denom}>{marker.denom}</Dropdown.Item>
                         )}
                     </DropdownButton>
                 </InputGroup>;
             } else {
                 return <span></span>;
             }
+        }
+
+        const onPropertyChange = (name, value) => {
+            // TODO
+        }
+
+        const getValue = (name) => {
+            /* TODO
+            if (this.state.args.hasOwnProperty(name)) {
+                return this.state.args[name];
+            } else {
+                return '';
+            }
+            */
+            return '';
         }
 
         const renderFunctionParametersContents = () => {
@@ -125,7 +141,7 @@ export default class SmartContractFunctionView extends React.Component<SmartCont
                         <div className="paramsPane">
                             <Form>
                                 {this.props.function.properties.map((prop, idx) =>
-                                    <SmartContractPropertyView property={prop} index={idx} ref={(c) => { this._propertyViews[prop.name] = c; }}></SmartContractPropertyView>
+                                    <SmartContractPropertyView key={prop.name} property={prop} index={idx} value={getValue(prop.name)} onChange={(value) => onPropertyChange(prop.name, value)} ref={(c) => { this._propertyViews[prop.name] = c; }}></SmartContractPropertyView>
                                 )}
                             </Form>
                         </div>
@@ -264,11 +280,14 @@ export default class SmartContractFunctionView extends React.Component<SmartCont
                 amount: Number(this._coinAmountInput.value),
                 denom: this.state.sendCoin.denom
             };
-            console.log('SENDING COIN WITH TX');
-            console.dir(coin);
         }
 
-        Utils.runFunction(this.props.function, funcMessage, this.state.signingKey, coin).then((result: any) => {
+        var address: (string | undefined) = undefined;
+        if (this.props.contractAddress.length > 0) {
+            address = this.props.contractAddress;
+        }
+
+        Utils.runFunction(this.props.function, funcMessage, address, this.state.signingKey, coin).then((result: any) => {
             this.setState({ busy: false, result: result });
         }).catch((err) => {
             console.log(`Error executing function ${this.props.function.name}: ${err.message}`);
