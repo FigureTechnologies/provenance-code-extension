@@ -5,6 +5,7 @@ import Dialog from 'react-bootstrap-dialog';
 
 import { Breadcrumb, Button, Card, OverlayTrigger, Table, Tooltip } from 'react-bootstrap';
 import { Alert, ChainViewAppBinding } from './app-binding';
+import { ProvenanceAccountBalance } from './provenance-account-balance';
 import { ProvenanceKey } from './provenance-key';
 import { ProvenanceMarker } from './provenance-marker';
 import { Utils } from './app-utils';
@@ -15,7 +16,8 @@ import { MintOrBurnMarkerModal, MintOrBurnMode } from './mint-or-burn-marker-mod
 import { WithdrawMarkerModal } from './withdraw-marker-modal';
 
 interface ProvenanceMarkerDetails {
-    marker: ProvenanceMarker
+    marker: ProvenanceMarker,
+    balances: ProvenanceAccountBalance[]
 }
 
 interface ProvenanceMarkersViewProps {
@@ -26,6 +28,7 @@ interface ProvenanceMarkersViewProps {
 
 interface ProvenanceMarkersViewState {
     markerDetails: (ProvenanceMarkerDetails | undefined),
+
     addMarkerModalShown: boolean,
     mintOrBurnMarkerModalShown: boolean,
     mintOrBurnMarker: ProvenanceMarker,
@@ -61,10 +64,15 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
         }
 
         const showMarkerDetails = (m) => {
-            this.setState({
-                markerDetails: {
-                    marker: m
-                }
+            this.props.appBinding.getAccountBalances(m.base_account.address).then((balances) => {
+                this.setState({
+                    markerDetails: {
+                        marker: m,
+                        balances: balances
+                    }
+                });
+            }).catch((err) => {
+                Utils.showAlert(Alert.Danger, `Unable to retrieve marker details for base account ${m.base_account.address}`, err.message, true);
             });
         };
 
@@ -253,7 +261,7 @@ export default class ProvenanceMarkersView extends React.Component<ProvenanceMar
                         </Card.Body>
                     </Card>
                 }
-                { isMarkerDetailsShown() && <MarkerDetailsView accountKeys={keys} marker={this.state.markerDetails.marker}></MarkerDetailsView> }
+                { isMarkerDetailsShown() && <MarkerDetailsView accountKeys={keys} marker={this.state.markerDetails.marker} balances={this.state.markerDetails.balances}></MarkerDetailsView> }
                 <AddMarkerModal
                     show={this.state.addMarkerModalShown}
                     keys={keys}

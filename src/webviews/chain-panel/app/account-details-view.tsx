@@ -88,7 +88,7 @@ export default class AccountDetailsView extends React.Component<AccountDetailsVi
                 <Card className="detailsCard">
                     <Card.Header>Account Balances</Card.Header>
                     <Card.Body>
-                    { (balances.length == 0) && <div className="noAssetsMarkers">No Assets/Markers</div> }
+                        { (balances.length == 0) && <div className="noAssetsMarkers">No Assets/Markers</div> }
                         { (balances.length > 0) && <Table striped bordered hover responsive variant="dark" size="sm">
                             <thead>
                                 <tr>
@@ -114,7 +114,7 @@ export default class AccountDetailsView extends React.Component<AccountDetailsVi
                                     </tr>
                                 )}
                             </tbody>
-                        </Table> }
+                        </Table>}
                     </Card.Body>
                 </Card>
                 <SendCoinModal

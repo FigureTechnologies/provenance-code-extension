@@ -27,8 +27,18 @@
     font-family: monospace;
 }
 
+.noAssetsMarkers {
+    font-size: 1rem;
+    font-weight: bold;
+}
+
 .markerAccessSep {
     height: 20px;
+}
+
+.markerAction {
+    display: inline-block;
+    width: 20px;
 }
 
 .accessControlAction {
