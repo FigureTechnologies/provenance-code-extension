@@ -25,9 +25,11 @@ interface WithdrawMarkerModalState {
     isBusy: boolean,
     formValid: boolean,
     formValidated: boolean,
+    showManualAddress: boolean,
     signerValidation: ValidationInfo,
     totalToWithdrawValidation: ValidationInfo,
-    withdrawToAddressValidation: ValidationInfo
+    withdrawToAddressValidation: ValidationInfo,
+    manualAddressValidation: ValidationInfo
 }
 
 export class WithdrawMarkerModal extends React.Component<WithdrawMarkerModalProps, WithdrawMarkerModalState> {
@@ -39,6 +41,7 @@ export class WithdrawMarkerModal extends React.Component<WithdrawMarkerModalProp
             isBusy: false,
             formValid: false,
             formValidated: false,
+            showManualAddress: false,
             signerValidation: {
                 isValid: true,
                 isValidated: true,
@@ -52,6 +55,11 @@ export class WithdrawMarkerModal extends React.Component<WithdrawMarkerModalProp
             withdrawToAddressValidation: {
                 isValid: true,
                 isValidated: true,
+                error: undefined
+            },
+            manualAddressValidation: {
+                isValid: true,
+                isValidated: false,
                 error: undefined
             }
         };
@@ -62,12 +70,14 @@ export class WithdrawMarkerModal extends React.Component<WithdrawMarkerModalProp
     _input_signer;
     _input_totalToWithdraw;
     _input_withdrawToAddress;
+    _input_manualAddress;
 
     reset() {
         this.setState({
             isBusy: false,
             formValid: false,
             formValidated: false,
+            showManualAddress: false,
             signerValidation: {
                 isValid: true,
                 isValidated: true,
@@ -81,6 +91,11 @@ export class WithdrawMarkerModal extends React.Component<WithdrawMarkerModalProp
             withdrawToAddressValidation: {
                 isValid: true,
                 isValidated: true,
+                error: undefined
+            },
+            manualAddressValidation: {
+                isValid: true,
+                isValidated: false,
                 error: undefined
             }
         });
@@ -96,21 +111,20 @@ export class WithdrawMarkerModal extends React.Component<WithdrawMarkerModalProp
                 error: undefined
             };
 
-            if (!value.startsWith('tp') && !value.startsWith('pb')) {
+            Utils.validateAddress(value).catch((err) => {
                 validationInfo.isValid = false;
-                validationInfo.error = "Address looks invalid";
-            } else if (value.length != 41) {
-                validationInfo.isValid = false;
-                validationInfo.error = "Address looks invalid";
-            } else if (!keyHasPerms({address: value} as ProvenanceKey)) {
-                validationInfo.isValid = false;
-                validationInfo.error = `Signer address does not have permissions to withdraw coin on this marker`;
-            }
+                validationInfo.error = err.message;
+            }).finally(() => {
+                if (!keyHasPerms({address: value} as ProvenanceKey)) {
+                    validationInfo.isValid = false;
+                    validationInfo.error = `Signer address does not have permissions to withdraw coin on this marker`;
+                }
 
-            this.setState({
-                formValid: validationInfo.isValid && this.state.totalToWithdrawValidation.isValid && this.state.withdrawToAddressValidation.isValid,
-                formValidated: validationInfo.isValidated && this.state.totalToWithdrawValidation.isValidated && this.state.withdrawToAddressValidation.isValidated,
-                signerValidation: validationInfo
+                this.setState({
+                    formValid: validationInfo.isValid && this.state.totalToWithdrawValidation.isValid && this.state.withdrawToAddressValidation.isValid,
+                    formValidated: validationInfo.isValidated && this.state.totalToWithdrawValidation.isValidated && this.state.withdrawToAddressValidation.isValidated,
+                    signerValidation: validationInfo
+                });
             });
         }
 
@@ -137,26 +151,49 @@ export class WithdrawMarkerModal extends React.Component<WithdrawMarkerModalProp
         }
 
         const validateWithdrawToAddress = (value) => {
+            if (value == "manual") {
+                this.setState({
+                    showManualAddress: true
+                });
+            } else {
+                var validationInfo: ValidationInfo = {
+                    isValid: true,
+                    isValidated: true,
+                    error: undefined
+                };
+
+                Utils.validateAddress(value).catch((err) => {
+                    validationInfo.isValid = false;
+                    validationInfo.error = err.message;
+                }).finally(() => {
+                    this.setState({
+                        formValid: validationInfo.isValid && this.state.signerValidation.isValid && this.state.totalToWithdrawValidation.isValid,
+                        formValidated: validationInfo.isValidated && this.state.signerValidation.isValidated && this.state.totalToWithdrawValidation.isValidated,
+                        withdrawToAddressValidation: validationInfo,
+                        showManualAddress: false
+                    });
+                });
+            }
+        }
+
+        const validateManualAddress = (value) => {
             var validationInfo: ValidationInfo = {
                 isValid: true,
                 isValidated: true,
                 error: undefined
             };
 
-            if (!value.startsWith('tp') && !value.startsWith('pb')) {
+            Utils.validateAddress(value).catch((err) => {
                 validationInfo.isValid = false;
-                validationInfo.error = "Address looks invalid";
-            } else if (value.length != 41) {
-                validationInfo.isValid = false;
-                validationInfo.error = "Address looks invalid";
-            }
-
-            this.setState({
-                formValid: validationInfo.isValid && this.state.signerValidation.isValid && this.state.totalToWithdrawValidation.isValid,
-                formValidated: validationInfo.isValidated && this.state.signerValidation.isValidated && this.state.totalToWithdrawValidation.isValidated,
-                withdrawToAddressValidation: validationInfo
+                validationInfo.error = err.message;
+            }).finally(() => {
+                this.setState({
+                    formValid: validationInfo.isValid && this.state.signerValidation.isValid && this.state.totalToWithdrawValidation.isValid,
+                    formValidated: validationInfo.isValidated && this.state.signerValidation.isValidated && this.state.totalToWithdrawValidation.isValidated,
+                    manualAddressValidation: validationInfo
+                });
             });
-        }
+        };
 
         const keyHasPerms = (k) => {
             if (this.props.marker) {
@@ -247,10 +284,25 @@ export class WithdrawMarkerModal extends React.Component<WithdrawMarkerModalProp
                                         {keys.map((key, idx) =>
                                             <option value={key.address}>{key.name} ({key.address})</option>
                                         )}
+                                        <option value="manual">Other address...</option>
                                     </Form.Control>
                                     <Form.Control.Feedback type="invalid">{this.state.withdrawToAddressValidation.error}</Form.Control.Feedback>
                                 </Col>
                             </Form.Group>
+                            {this.state.showManualAddress && <Form.Group as={Row} controlId="manualAddress">
+                                <Form.Label column sm={3}>Withdraw Address</Form.Label>
+                                <Col sm={9}>
+                                    <Form.Control 
+                                        type="text"
+                                        placeholder=""
+                                        ref={(c) => this._input_manualAddress = c}
+                                        onChange={e => validateManualAddress(e.currentTarget.value)}
+                                        isInvalid={!this.state.manualAddressValidation.isValid}
+                                        disabled={this.state.isBusy}
+                                    />
+                                    <Form.Control.Feedback type="invalid">{this.state.manualAddressValidation.error}</Form.Control.Feedback>
+                                </Col>
+                            </Form.Group>}
                         </Form>
                     </Modal.Body>
                     <Modal.Footer>
@@ -286,7 +338,7 @@ export class WithdrawMarkerModal extends React.Component<WithdrawMarkerModalProp
 
         const signer = this._input_signer.value as string;
         const totalToWithdraw = Number(this._input_totalToWithdraw.value as string);
-        const withdrawTo = this._input_withdrawToAddress.value as string;
+        const withdrawTo = this.state.showManualAddress ? this._input_manualAddress.value as string : this._input_withdrawToAddress.value as string;
 
         Utils.withdrawCoin(this.props.marker.denom, totalToWithdraw, withdrawTo, signer).then(() => {
             this.setState({ isBusy: false });
