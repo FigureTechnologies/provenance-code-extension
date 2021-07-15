@@ -556,9 +556,17 @@ export class Provenance {
 		});
 	}
 
+	isKey(key: string): boolean {
+		return ((key.startsWith('tp') || key.startsWith('pb')) && key.length == 41);
+	}
+
 	getAddressForKey(key: string): string {
-		const address = child_process.execSync(`${this.settings.clientBinary || 'provenanced'} ${ProvenanceCommand.Keys} ${KeysCommand.Show} -a ${key} --home ${this.settings.homeDir} ${this.settings.testNet ? ProvenanceClientFlags.TestNet : ''}`);
-		return address.toString().trim();
+		if (this.isKey(key)) {
+			return key;
+		} else {
+			const address = child_process.execSync(`${this.settings.clientBinary || 'provenanced'} ${ProvenanceCommand.Keys} ${KeysCommand.Show} -a ${key} --home ${this.settings.homeDir} ${this.settings.testNet ? ProvenanceClientFlags.TestNet : ''}`);
+			return address.toString().trim();
+		}
 	}
 
 	doesKeyExist(key: string): boolean {

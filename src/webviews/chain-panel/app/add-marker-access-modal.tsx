@@ -37,7 +37,9 @@ interface AddMarkerAccessModalState {
     formValid: boolean,
     formValidated: boolean,
     privs: MarkerManagerPrivileges,
-    accessAddressValidation: ValidationInfo
+    showManualAddress: boolean,
+    accessAddressValidation: ValidationInfo,
+    manualAddressValidation: ValidationInfo,
 }
 
 export default class AddMarkerAccessModal extends React.Component<AddMarkerAccessModalProps, AddMarkerAccessModalState> {
@@ -49,6 +51,7 @@ export default class AddMarkerAccessModal extends React.Component<AddMarkerAcces
             isBusy: false,
             formValid: false,
             formValidated: false,
+            showManualAddress: false,
             privs: {
                 admin: true,
                 burn: true,
@@ -62,6 +65,11 @@ export default class AddMarkerAccessModal extends React.Component<AddMarkerAcces
                 isValid: true,
                 isValidated: true,
                 error: undefined
+            },
+            manualAddressValidation: {
+                isValid: true,
+                isValidated: false,
+                error: undefined
             }
         };
 
@@ -69,12 +77,14 @@ export default class AddMarkerAccessModal extends React.Component<AddMarkerAcces
     }
 
     _input_accessAddress;
+    _input_manualAddress;
 
     reset() {
         this.setState({
             isBusy: false,
             formValid: false,
             formValidated: false,
+            showManualAddress: false,
             privs: {
                 admin: true,
                 burn: true,
@@ -87,6 +97,11 @@ export default class AddMarkerAccessModal extends React.Component<AddMarkerAcces
             accessAddressValidation: {
                 isValid: true,
                 isValidated: true,
+                error: undefined
+            },
+            manualAddressValidation: {
+                isValid: true,
+                isValidated: false,
                 error: undefined
             }
         });
@@ -96,26 +111,49 @@ export default class AddMarkerAccessModal extends React.Component<AddMarkerAcces
         const keys = this.props.keys;
 
         const validateAccessAddress = (value) => {
+            if (value == "manual") {
+                this.setState({
+                    showManualAddress: true
+                });
+            } else {
+                var validationInfo: ValidationInfo = {
+                    isValid: true,
+                    isValidated: true,
+                    error: undefined
+                };
+
+                Utils.validateAddress(value).catch((err) => {
+                    validationInfo.isValid = false;
+                    validationInfo.error = err.message;
+                }).finally(() => {
+                    this.setState({
+                        formValid: validationInfo.isValid,
+                        formValidated: validationInfo.isValidated,
+                        accessAddressValidation: validationInfo,
+                        showManualAddress: false
+                    });
+                });
+            }
+        };
+
+        const validateManualAddress = (value) => {
             var validationInfo: ValidationInfo = {
                 isValid: true,
                 isValidated: true,
                 error: undefined
             };
 
-            if (!value.startsWith('tp') && !value.startsWith('pb')) {
+            Utils.validateAddress(value).catch((err) => {
                 validationInfo.isValid = false;
-                validationInfo.error = "Address looks invalid";
-            } else if (value.length != 41) {
-                validationInfo.isValid = false;
-                validationInfo.error = "Address looks invalid";
-            }
-
-            this.setState({
-                formValid: validationInfo.isValid,
-                formValidated: validationInfo.isValidated,
-                accessAddressValidation: validationInfo
+                validationInfo.error = err.message;
+            }).finally(() => {
+                this.setState({
+                    formValid: validationInfo.isValid,
+                    formValidated: validationInfo.isValidated,
+                    manualAddressValidation: validationInfo
+                });
             });
-        }
+        };
 
         const updatePrivileges = (priv, checked) => {
             var privs = this.state.privs;
@@ -133,7 +171,7 @@ export default class AddMarkerAccessModal extends React.Component<AddMarkerAcces
             this.setState({
                 privs: privs
             });
-        }
+        };
 
         return (
             <React.Fragment>
@@ -166,10 +204,25 @@ export default class AddMarkerAccessModal extends React.Component<AddMarkerAcces
                                         {keys.map((key, idx) =>
                                             <option value={key.address}>{key.name} ({key.address})</option>
                                         )}
+                                        <option value="manual">Other address...</option>
                                     </Form.Control>
                                     <Form.Control.Feedback type="invalid">{this.state.accessAddressValidation.error}</Form.Control.Feedback>
                                 </Col>
                             </Form.Group>
+                            {this.state.showManualAddress && <Form.Group as={Row} controlId="manualAddress">
+                                <Form.Label column sm={3}>Other Address</Form.Label>
+                                <Col sm={9}>
+                                    <Form.Control 
+                                        type="text"
+                                        placeholder=""
+                                        ref={(c) => this._input_manualAddress = c}
+                                        onChange={e => validateManualAddress(e.currentTarget.value)}
+                                        isInvalid={!this.state.manualAddressValidation.isValid}
+                                        disabled={this.state.isBusy}
+                                    />
+                                    <Form.Control.Feedback type="invalid">{this.state.manualAddressValidation.error}</Form.Control.Feedback>
+                                </Col>
+                            </Form.Group>}
                             <Form.Group as={Row} controlId="privs">
                                 <Form.Label column sm={3}>Privileges</Form.Label>
                                 <Col sm={9}>
@@ -229,7 +282,7 @@ export default class AddMarkerAccessModal extends React.Component<AddMarkerAcces
     private addAccess() {
         this.setState({ isBusy: true });
 
-        const accessAddress = this._input_accessAddress.value as string;
+        const accessAddress = this.state.showManualAddress ? this._input_manualAddress.value as string : this._input_accessAddress.value as string;
 
         var markerAccess: ProvenanceMarkerAccessControl[] = [];
         markerAccess.push({
