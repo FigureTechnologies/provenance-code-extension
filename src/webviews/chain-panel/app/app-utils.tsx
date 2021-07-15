@@ -4,6 +4,20 @@ import { ProvenanceMarker, ProvenanceMarkerAccessControl } from './provenance-ma
 
 export class Utils {
 
+    static validateAddress(addr: string): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            if (!addr.startsWith('tp') && !addr.startsWith('pb')) {
+                reject(new Error("Invalid address. Must start with 'tp' or 'pb'."));
+            } else if (addr.length != 41) {
+                reject(new Error("Invalid address. Must have length of 41."));
+            } else if (!addr.match("^[A-Za-z0-9]+$")) {
+                reject(new Error("Invalid address. Must not have special characters."));
+            } else {
+                resolve();
+            }
+        });
+    }
+
     static createKey (name: string): Promise<(ProvenanceKey | undefined)> {
         const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();
         return appBinding.createKey(name);
