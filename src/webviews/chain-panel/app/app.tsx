@@ -4,11 +4,15 @@ import './app.scss';
 import { Alert, Col, Container, Nav, Navbar, Row } from 'react-bootstrap';
 import { ProvenanceKey } from './provenance-key';
 import { ProvenanceMarker } from './provenance-marker';
+import { SmartContractTemplate } from "./smart-contract-template";
 import { AlertEvent, ChainViewAppBinding, Command, Event } from './app-binding';
 
+import { GitUserConfig } from "./git-user-config";
+import ProvenanceHomeView from './provenance-home-view';
 import ProvenanceAccountsView from './provenance-accounts-view';
 import ProvenanceMarkersView from './provenance-markers-view';
 
+const HOME_VIEW: string = 'home';
 const ACCOUNTS_VIEW: string = 'accounts';
 const MARKERS_VIEW: string = 'markers';
 
@@ -26,6 +30,9 @@ interface AppProps {
 interface AppState {
     keys: ProvenanceKey[],
     markers: ProvenanceMarker[],
+    gitUserConfig: GitUserConfig,
+    templates: SmartContractTemplate[],
+    recentProjects: string[],
     activeView: string,
     alerts: AlertEvent[]
 }
@@ -40,7 +47,10 @@ export class App extends React.Component<AppProps, AppState> {
         this.state = {
             keys: this.appBinding.keys,
             markers: this.appBinding.markers,
-            activeView: ACCOUNTS_VIEW,
+            gitUserConfig: this.appBinding.gitUserConfig,
+            templates: this.appBinding.templates,
+            recentProjects: this.appBinding.recentProjects,
+            activeView: HOME_VIEW,
             alerts: []
         };
 
@@ -53,6 +63,24 @@ export class App extends React.Component<AppProps, AppState> {
         this.appBinding.markersObservable.subscribe((markers) => {
             this.setState({
                 markers: markers
+            });
+        });
+
+        this.appBinding.gitUserConfigObservable.subscribe((gitUserConfig) => {
+            this.setState({
+                gitUserConfig: gitUserConfig
+            });
+        });
+
+        this.appBinding.templatesObservable.subscribe((templates) => {
+            this.setState({
+                templates: templates
+            });
+        });
+
+        this.appBinding.recentProjectsObservable.subscribe((recentProjects) => {
+            this.setState({
+                recentProjects: recentProjects
             });
         });
 
@@ -88,19 +116,23 @@ export class App extends React.Component<AppProps, AppState> {
             <Container>
                 <Navbar collapseOnSelect expand="sm" bg="dark" variant="dark" fixed="top">
                     <Navbar.Brand>
-                        <svg color="#3F80F3" height="30px" viewBox="0 0 22 31" fill="none">
-                            <path d="M16.5 3.38182L11 0L5.5 3.38182L0 6.76364V12.4V18.0364V27.6182L5.5 31V21.4182L11 24.8L16.5 21.4182L22 18.0364V12.4V6.76364L16.5 3.38182ZM16.5 15.7818L11 19.1636L5.5 15.7818V10.1455L11 6.76364L16.5 10.1455V15.7818Z" fill="currentColor"></path>
-                        </svg>
+                        <a href="https://provenance.io/">
+                            <svg color="#3F80F3" height="30px" viewBox="0 0 22 31" fill="none">
+                                <path d="M16.5 3.38182L11 0L5.5 3.38182L0 6.76364V12.4V18.0364V27.6182L5.5 31V21.4182L11 24.8L16.5 21.4182L22 18.0364V12.4V6.76364L16.5 3.38182ZM16.5 15.7818L11 19.1636L5.5 15.7818V10.1455L11 6.76364L16.5 10.1455V15.7818Z" fill="currentColor"></path>
+                            </svg>
+                        </a>
                     </Navbar.Brand>
                     <Navbar.Toggle aria-controls="responsive-navbar-nav" />
                     <Navbar.Collapse id="responsive-navbar-nav">
                         <Nav className="mr-auto">
+                            <Nav.Link active={this.state.activeView == HOME_VIEW} onClick={() => setActiveView(HOME_VIEW)}>Home</Nav.Link>
                             <Nav.Link active={this.state.activeView == ACCOUNTS_VIEW} onClick={() => setActiveView(ACCOUNTS_VIEW)}>Accounts</Nav.Link>
                             <Nav.Link active={this.state.activeView == MARKERS_VIEW} onClick={() => setActiveView(MARKERS_VIEW)}>Markers</Nav.Link>
                         </Nav>
                     </Navbar.Collapse>
                 </Navbar>
                 <Container className="rootContainer" fluid>
+                    {this.state.activeView == HOME_VIEW && <ProvenanceHomeView appBinding={this.appBinding} templates={this.state.templates} recentProjects={this.state.recentProjects} gitUserConfig={this.state.gitUserConfig}></ProvenanceHomeView>}
                     {this.state.activeView == ACCOUNTS_VIEW && <ProvenanceAccountsView appBinding={this.appBinding} accountKeys={this.state.keys}></ProvenanceAccountsView>}
                     {this.state.activeView == MARKERS_VIEW && <ProvenanceMarkersView appBinding={this.appBinding} accountKeys={this.state.keys} markers={this.state.markers}></ProvenanceMarkersView>}
                 </Container>

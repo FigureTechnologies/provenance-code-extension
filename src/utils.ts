@@ -1,12 +1,21 @@
 import * as vscode from 'vscode';
+import * as async from 'async';
 import * as child_process from 'child_process';
+import * as fs from 'fs';
+import * as fsx from 'fs-extra';
+import * as Mustache from 'mustache';
 import * as path from 'path';
 import { URL } from 'url';
 import SimpleGit, { RemoteWithRefs } from 'simple-git';
 
+import { Config, TemplateConfig } from './config';
+import { GlobalState } from './state';
+
 import { Contract, Provenance, ProvenanceConfig } from './ProvenanceClient'
 
+import { EmptyGitUserConfig, GitUserConfig } from './webviews/chain-panel/app/git-user-config';
 import { SmartContractFunction, SmartContractFunctionProperty, SmartContractFunctionType, SmartContractFunctions } from './webviews/run-panel/app/smart-contract-function';
+import { SmartContractTemplate } from './webviews/chain-panel/app/smart-contract-template';
 
 class JSONSchemaSmartContractFunctionProperty implements SmartContractFunctionProperty {
     name: string = '';
@@ -262,18 +271,16 @@ export class Utils {
                         Promise.all(foundFiles.map(async (foundFile) => {
                             return new Promise<void>((iresolve) => {
                                 vscode.workspace.openTextDocument(foundFile).then((jsonSchemaDoc) => {
-                                    let jsonSchema: any = JSON.parse(jsonSchemaDoc.getText());
-                                    //console.dir(jsonSchema);
-    
+                                    let jsonSchema: any = JSON.parse(jsonSchemaDoc.getText());    
                                     if (jsonSchema.$schema && jsonSchema.$schema.includes('http://json-schema.org/')) {
-                                        if (jsonSchema.title == 'ExecuteMsg') {
+                                        if (jsonSchema.title == 'ExecuteMsg' && jsonSchema.anyOf) {
                                             jsonSchema.anyOf.forEach((jsonSchemaFunc: any) => {
                                                 try {
                                                     var scFunc = new JSONSchemaSmartContractFunction(jsonSchemaFunc, SmartContractFunctionType.Execute);
                                                     executeFunctions.push(scFunc);
                                                 } catch (ex) {}
                                             });
-                                        } else if (jsonSchema.title == 'QueryMsg') {
+                                        } else if (jsonSchema.title == 'QueryMsg' && jsonSchema.anyOf) {
                                             jsonSchema.anyOf.forEach((jsonSchemaFunc: any) => {
                                                 try {
                                                     var scFunc = new JSONSchemaSmartContractFunction(jsonSchemaFunc, SmartContractFunctionType.Query);
@@ -396,6 +403,328 @@ export class Utils {
                 });
             }).catch((err) => {
                 reject(err);
+            });
+        });
+    }
+
+    static getGitUserConfig(): Promise<GitUserConfig> {
+        return new Promise<GitUserConfig>((resolve, reject) => {
+            SimpleGit().listConfig().then((summary) => {
+                var userConfig: GitUserConfig = EmptyGitUserConfig;
+                if ("user.name" in summary.all) {
+                    userConfig.name = summary.all["user.name"] as string;
+                }
+                if ("user.email" in summary.all) {
+                    userConfig.email = summary.all["user.email"] as string;
+                }
+                resolve(userConfig);
+            }).catch((err) => {
+                reject(err);
+            });
+        });
+    }
+
+    static getSmartContractTemplates(): Promise<SmartContractTemplate[]> {
+        return new Promise<SmartContractTemplate[]>((resolve, reject) => {
+            var templates: SmartContractTemplate[] = [];
+            async.eachSeries(Config.Templates, (template, callback) => {
+                Utils.ensureSmartContractTemplateExists(template).then(() => {
+                    const templateCache = GlobalState.get().templateCache;
+                    const localTemplatePath = path.join(templateCache.path, template.dir);
+                    const git = SimpleGit(localTemplatePath);
+                    git.tags().then((tags) => {
+                        templates.push({
+                            name: template.name,
+                            description: template.description,
+                            versions: tags.all
+                        });
+                        callback();
+                    }).catch((err) => {
+                        callback(err);
+                    });
+                }).catch((err) => {
+                    callback(err);
+                });
+            }, (err) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve(templates);
+                }
+            });
+        });
+    }
+
+    static ensureSmartContractTemplateExists(templateConfig: TemplateConfig): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            const templateCache = GlobalState.get().templateCache;
+            async.series([
+                // ensure the template cache directory exists
+                (callback) => {
+                    if (!fs.existsSync(templateCache.path)) {
+                        console.log(`Creating template cache path ${templateCache.path}`);
+                        fs.mkdirSync(templateCache.path, { recursive: true });
+                    }
+                    callback();
+                },
+
+                // ensure the specified template has been cloned locally
+                (callback) => {
+                    const localTemplatePath = path.join(templateCache.path, templateConfig.dir);
+                    if (!fs.existsSync(localTemplatePath)) {
+                        SimpleGit().clone(templateConfig.repo, localTemplatePath).then(() => {
+                            console.log('Done cloning');
+                            callback();
+                        }).catch((err) => {
+                            callback(new Error(`Failed to clone smart contract template '${templateConfig.name}': ${err.message}`));
+                        });
+                    } else {
+                        callback();
+                    }
+                },
+
+                // ensure that we have the latest
+                (callback) => {
+                    const localTemplatePath = path.join(templateCache.path, templateConfig.dir);
+                    const git = SimpleGit(localTemplatePath);
+                    git.pull().then(() => {
+                        callback();
+                    }).catch((err) => {
+                        callback(err);
+                    });
+                }
+            ], (err, results) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
+            });
+        });
+    }
+
+    static findSmarContractTemplateConfigByName(name: string): Promise<TemplateConfig> {
+        return new Promise<TemplateConfig>((resolve, reject) => {
+            var templateConfig = Config.Templates.find((templateConfig) => templateConfig.name == name);
+            if (templateConfig) {
+                resolve(templateConfig);
+            } else {
+                reject(new Error(`Unable to locate smart contract template '${name}'`));
+            }
+        });
+    }
+
+    static readDirRecursivelyFilesOnly(dir: string, filter: (((dirent: fs.Dirent) => boolean) | undefined) = undefined): Promise<string[]> {
+        return new Promise<string[]>((resolve, reject) => {
+            var dirents: string[] = [];
+            fsx.readdir(dir, { withFileTypes: true }).then((files) => {
+                async.eachSeries(files, (file, callback) => {
+                    if (file.isFile()) {
+                        if (!filter || filter(file)) {
+                            dirents.push(path.join(dir, file.name));
+                        }
+                        callback();
+                    } else if (file.isDirectory()) {
+                        if (!filter || filter(file)) {
+                            Utils.readDirRecursivelyFilesOnly(path.join(dir, file.name), filter).then((subdir_files) => {
+                                dirents = dirents.concat(subdir_files);
+                                callback();
+                            }).catch((err) => {
+                                callback(err);
+                            });
+                        } else {
+                            callback();
+                        }
+                    } else {
+                        callback();
+                    }
+                }, (err) => {
+                    if (err) {
+                        reject(err);
+                    } else {
+                        resolve(dirents);
+                    }
+                });
+            }).catch((err) => {
+                reject(err);
+            });
+        });
+    }
+
+    static openProject(location: string): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            var currentWorkspaceFolderCount = 0;
+            if (vscode.workspace.workspaceFolders) {
+                currentWorkspaceFolderCount = vscode.workspace.workspaceFolders.length;
+            }
+            if (vscode.workspace.updateWorkspaceFolders(0, currentWorkspaceFolderCount, {
+                uri: vscode.Uri.file(location)
+            })) {
+                // add the project to the recents list
+                const globalState = GlobalState.get();
+                if (globalState.recentProjects.projectLocations.includes(location)) {
+                    const index = globalState.recentProjects.projectLocations.indexOf(location, 0);
+                    if (index > -1) {
+                        globalState.recentProjects.projectLocations.splice(index, 1);
+                    }
+                    globalState.recentProjects.projectLocations.unshift(location);
+                } else {
+                    globalState.recentProjects.projectLocations.unshift(location);
+                }
+                globalState.save();
+
+                resolve();
+            } else {
+                reject(new Error(`Unable to open project from "${location}"`));
+            }
+        });
+    }
+
+    static createProjectFromTemplate(name: string, location: string, repo: string, template: string, version: string, author: string, email: string, org: string): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            const templateCache = GlobalState.get().templateCache;
+            const projectLocation = path.join(location, name);
+            var templateConfig: (TemplateConfig | undefined) = undefined;
+
+            async.series([
+                // lookup template from config
+                (callback) => {
+                    console.log(`Looking up template '${template}' from config...`);
+                    Utils.findSmarContractTemplateConfigByName(template).then((template) => {
+                        templateConfig = template;
+                        callback();
+                    }).catch((err) => {
+                        callback(err);
+                    });
+                },
+
+                // ensure the template exists locally
+                (callback) => {
+                    const template = templateConfig as TemplateConfig;
+                    console.log(`Ensure the template '${template.name}' exists locally...`);
+                    Utils.ensureSmartContractTemplateExists(template).then(() => {
+                        callback();
+                    }).catch((err) => {
+                        callback(err);
+                    });
+                },
+
+                // copy the template to the project location
+                (callback) => {
+                    const template = templateConfig as TemplateConfig;
+                    const localTemplatePath = path.join(templateCache.path, template.dir);
+
+                    if (!fs.existsSync(projectLocation)) {
+                        console.dir(`Creating directory for project: ${projectLocation}`);
+                        fsx.mkdirpSync(projectLocation);
+                    }
+
+                    console.dir(`Copying template from ${localTemplatePath} to ${projectLocation}`);
+                    fsx.copy(localTemplatePath, projectLocation, {
+                        filter: (src, dest) => {
+                            return true;
+                        }
+                    }).then(() => {
+                        callback();
+                    }).catch((err: Error) => {
+                        console.error(`Copy failed: ${err.message}`);
+                        callback(err);
+                    });
+                },
+
+                // checkout the correct version in the project
+                (callback) => {
+                    console.log(`Checking out version '${version}'...`);
+                    const git = SimpleGit(projectLocation);
+                    git.checkout(version).then(() => {
+                        callback();
+                    }).catch((err) => {
+                        console.error(`Checkout failed: ${err.message}`);
+                        callback(err);
+                    });
+                },
+
+                // clear git repo in the project
+                (callback) => {
+                    console.log(`Resetting git repo...`);
+                    const gitDir = path.join(projectLocation, '.git');
+                    fsx.remove(gitDir).then(() => {
+                        callback();
+                    }).catch((err) => {
+                        console.error(`Removing .git directory failed: ${err.message}`);
+                        callback(err);
+                    })
+                },
+
+                // initialize the git repo in the project
+                (callback) => {
+                    console.log(`Initializing git repo...`);
+                    const git = SimpleGit(projectLocation);
+                    git.init().addRemote('origin', repo).then(() => {
+                        callback();
+                    }).catch((err) => {
+                        console.error(`Failed to initialize git repo: ${err.message}`);
+                        callback(err);
+                    });
+                },
+
+                // render the template
+                (callback) => {
+                    console.log(`Rendering template...`);
+                    const view = {
+                        contract: {
+                            name: name,
+                            snake: name.replace("-", '_'),
+                        },
+                        git: {
+                            userName: author,
+                            emailAddress: email,
+                            repoUrl: repo
+                        },
+                        company: org
+                    }
+
+                    const ignoreList: string[] = [
+                        '.git',
+                        '.DS_Store'
+                    ];
+                    Utils.readDirRecursivelyFilesOnly(projectLocation, (file: fs.Dirent) => {
+                        return !ignoreList.includes(file.name);
+                    }).then((files) => {
+                        files.forEach((file) => {
+                            console.log(`Rendering template for file: ${file}`);
+
+                            const templateData = fs.readFileSync(file, {
+                                encoding: 'utf8',
+                                flag: 'r'
+                            });
+
+                            const fileData = Mustache.render(templateData, view);
+
+                            fs.writeFileSync(file, fileData, {
+                                encoding: 'utf8',
+                                flag: 'w'
+                            });
+                        });
+                        callback();
+                    }).catch((err) => {
+                        callback(err);
+                    });
+                },
+
+                // add the project to the workspace
+                (callback) => {
+                    console.log(`Adding project to workspace...`);
+                    Utils.openProject(projectLocation).finally(() => {
+                        callback()
+                    });
+                }
+            ], (err, results) => {
+                if (err) {
+                    reject(err);
+                } else {
+                    resolve();
+                }
             });
         });
     }

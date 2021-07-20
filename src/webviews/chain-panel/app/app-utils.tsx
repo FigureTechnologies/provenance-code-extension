@@ -2,6 +2,17 @@ import { Alert, ChainViewAppBinding } from './app-binding';
 import { ProvenanceKey } from './provenance-key';
 import { ProvenanceMarker, ProvenanceMarkerAccessControl } from './provenance-marker';
 
+const EmailAddressValidation = new RegExp(/^[^\s@]+@[^\s@]+\.[^\s@]+$/);
+
+const UrlValidation = new RegExp('^(https?:\\/\\/)?'+ // protocol
+    '((([a-z\\d]([a-z\\d-]*[a-z\\d])*)\\.)+[a-z]{2,}|'+ // domain name
+    '((\\d{1,3}\\.){3}\\d{1,3}))'+ // OR ip (v4) address
+    '(\\:\\d+)?(\\/[-a-z\\d%_.~+]*)*'+ // port and path
+    '(\\?[;&a-z\\d%_.~+=-]*)?'+ // query string
+    '(\\#[-a-z\\d_]*)?$','i'); // fragment locator
+
+const GitUrlValidation = new RegExp(/(?:git|ssh|https?|git@[-\w.]+):(\/\/)?(.*?)(\.git)(\/?|\#[-\d\w._]+?)$/);
+
 export class Utils {
 
     static validateAddress(addr: string): Promise<void> {
@@ -16,6 +27,18 @@ export class Utils {
                 resolve();
             }
         });
+    }
+
+    static validateEmailAddress(email: string): boolean {
+        return EmailAddressValidation.test(email);
+    }
+
+    static validateUrl(url: string): boolean {
+        return UrlValidation.test(url);
+    }
+
+    static validateGitUrl(url: string): boolean {
+        return GitUrlValidation.test(url);
     }
 
     static createKey (name: string): Promise<(ProvenanceKey | undefined)> {
@@ -79,6 +102,16 @@ export class Utils {
             appBinding.showAlert(type, title, body, dismissable);
             resolve();
         });
+    }
+
+    static createNewProject (projectName: string, projectLocation: string, selectedTemplate: string, templateVersion: string, authorName: string, authorEmail: string, authorOrg: string, sourceRepo: string): Promise<void> {
+        const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();
+        return appBinding.createNewProject(projectName, projectLocation, selectedTemplate, templateVersion, authorName, authorEmail, authorOrg, sourceRepo);
+    }
+
+    static openProject (projectLocation: string): Promise<void> {
+        const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();
+        return appBinding.openProject(projectLocation);
     }
 
     static getKeyForAddress (keys: ProvenanceKey[], address: string): (ProvenanceKey | undefined) {

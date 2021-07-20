@@ -4,6 +4,7 @@ import * as async from 'async';
 
 import { ArgParser } from './ArgParser';
 import { Utils } from './utils';
+import { GlobalState } from './state';
 import { Key, Marker, MarkerAccess, MarkerType, Provenance, ProvenanceConfig, ProvenanceKeyConfig, ProvenanceMarkerConfig, ProvenanceMarkerGrant } from './ProvenanceClient'
 
 import { ChainViewAppBinding } from './webviews/chain-panel/app/app-binding';
@@ -22,6 +23,8 @@ import { ProvenanceMarker, ProvenanceMarkerAccessControl } from './webviews/chai
 let provenance: Provenance = new Provenance();
 let lastWasmCodeId: number = -1;
 let isBusy: boolean = false;
+
+let globalState: GlobalState;
 
 let chainPanelView: ChainPanelViewLoader;
 let chainViewApp: ChainViewAppBinding;
@@ -411,16 +414,12 @@ export function activate(context: vscode.ExtensionContext) {
 		});
 		chainPanelView.onDidChangeViewState(() => {
 			console.log('chainPanelView.onDidChangeViewState');
-			Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
-				ChainPanelViewUpdater.update(config);
-			});
+			ChainPanelViewUpdater.update();
 		});
 
 		chainViewApp.waitForReady().then(() => {
 			console.log('Chain view ready!');
-			Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
-				ChainPanelViewUpdater.update(config);
-			});
+			ChainPanelViewUpdater.update();
 
 			// hook up execute function request handler
 			chainViewApp.onGetAccountBalancesRequest((address: string, resolve: ((result: ProvenanceAccountBalance[]) => void), reject: ((err: Error) => void)) => {
@@ -438,10 +437,10 @@ export function activate(context: vscode.ExtensionContext) {
 				console.log('onCreateKeyRequest');
 
 				provenance.createKey(name).then((result) => {
+					ChainPanelViewUpdater.update(ChainPanelViewUpdater.ChainPanelViewUpdateType.Keys);
 					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
-						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Keys);
 						RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.SigningKeys);
-					});
+					}).catch((err) => {});
 					resolve(result);
 				}).catch((err: Error) => {
 					vscode.window.showErrorMessage(err.message);
@@ -453,10 +452,10 @@ export function activate(context: vscode.ExtensionContext) {
 				console.log('onRecoverKeyRequest');
 
 				provenance.recoverKey(name, mnemonic).then((result) => {
+					ChainPanelViewUpdater.update(ChainPanelViewUpdater.ChainPanelViewUpdateType.Keys);
 					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
-						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Keys);
 						RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.SigningKeys);
-					});
+					}).catch((err) => {});
 					resolve(result);
 				}).catch((err: Error) => {
 					vscode.window.showErrorMessage(err.message);
@@ -468,10 +467,10 @@ export function activate(context: vscode.ExtensionContext) {
 				console.log('onDeleteKeyRequest');
 
 				provenance.deleteKey(name).then(() => {
+					ChainPanelViewUpdater.update(ChainPanelViewUpdater.ChainPanelViewUpdateType.Keys);
 					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
-						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Keys);
 						RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.SigningKeys);
-					});
+					}).catch((err) => {});
 					resolve();
 				}).catch((err) => {
 					vscode.window.showErrorMessage(err.message);
@@ -506,10 +505,10 @@ export function activate(context: vscode.ExtensionContext) {
 				});
 
 				provenance.createMarker(denom, supply, manager, markerType, markerGrants).then((marker) => {
+					ChainPanelViewUpdater.update(ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
 					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
-						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
 						RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.Markers);
-					});
+					}).catch((err) => {});
 					resolve(marker);
 				}).catch((err) => {
 					vscode.window.showErrorMessage(err.message);
@@ -525,10 +524,10 @@ export function activate(context: vscode.ExtensionContext) {
 						if(!provenance.doesMarkerExist(denom)) {
 							clearInterval(checkInterval);
 							
+							ChainPanelViewUpdater.update(ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
 							Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
-								ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
 								RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.Markers);
-							});
+							}).catch((err) => {});
 							resolve();
 						}
 					}, 500);
@@ -572,10 +571,10 @@ export function activate(context: vscode.ExtensionContext) {
 						reject(err);
 					} else {
 						provenance.getMarker(denom).then((marker) => {
+							ChainPanelViewUpdater.update(ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
 							Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
-								ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
 								RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.Markers);
-							});
+							}).catch((err) => {});
 							resolve(marker);
 						}).catch((err) => {
 							reject(err);
@@ -589,10 +588,10 @@ export function activate(context: vscode.ExtensionContext) {
 
 				provenance.revokeMarkerPrivs(denom, address, from).then(() => {
 					provenance.getMarker(denom).then((marker) => {
+						ChainPanelViewUpdater.update(ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
 						Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
-							ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
 							RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.Markers);
-						});
+						}).catch((err) => {});
 						resolve(marker);
 					}).catch((err) => {
 						reject(err);
@@ -606,10 +605,10 @@ export function activate(context: vscode.ExtensionContext) {
 				console.log('onMintMarkerCoinsRequest');
 
 				provenance.mintCoin(denom, amount, from).then(() => {
+					ChainPanelViewUpdater.update(ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
 					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
-						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
 						RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.Markers);
-					});
+					}).catch((err) => {});
 					console.log(`provenance.mintCoin.then`);
 					resolve();
 				}).catch((err) => {
@@ -622,10 +621,10 @@ export function activate(context: vscode.ExtensionContext) {
 				console.log('onBurnMarkerCoinsRequest');
 
 				provenance.burnCoin(denom, amount, from).then(() => {
+					ChainPanelViewUpdater.update(ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
 					Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
-						ChainPanelViewUpdater.update(config, ChainPanelViewUpdater.ChainPanelViewUpdateType.Markers);
 						RunPanelViewUpdater.update(config, RunPanelViewUpdater.RunPanelViewUpdateType.Markers);
-					});
+					}).catch((err) => {});
 					resolve();
 				}).catch((err) => {
 					vscode.window.showErrorMessage(err.message);
@@ -648,6 +647,30 @@ export function activate(context: vscode.ExtensionContext) {
 				console.log('onSendCoinRequest');
 
 				provenance.sendCoin(denom, amount, to, from).then(() => {
+					resolve();
+				}).catch((err) => {
+					vscode.window.showErrorMessage(err.message);
+					reject(err);
+				});
+			});
+
+			chainViewApp.onCreateNewProjectRequest((name: string, location: string, repo: string, template: string, version: string, author: string, email: string, org: string, resolve: (() => void), reject: ((err: Error) => void)) => {
+				console.log('onCreateNewProjectRequest');
+
+				Utils.createProjectFromTemplate(name, location, repo, template, version, author, email, org).then(() => {
+					ChainPanelViewUpdater.update(ChainPanelViewUpdater.ChainPanelViewUpdateType.RecentProjects);
+					resolve();
+				}).catch((err) => {
+					vscode.window.showErrorMessage(err.message);
+					reject(err);
+				});
+			});
+
+			chainViewApp.onOpenProjectRequest((location: string, resolve: (() => void), reject: ((err: Error) => void)) => {
+				console.log('onOpenProjectRequest');
+
+				Utils.openProject(location).then(() => {
+					ChainPanelViewUpdater.update(ChainPanelViewUpdater.ChainPanelViewUpdateType.RecentProjects);
 					resolve();
 				}).catch((err) => {
 					vscode.window.showErrorMessage(err.message);
@@ -705,9 +728,9 @@ export function activate(context: vscode.ExtensionContext) {
 			});
 
 			runViewApp.waitForReady().then(() => {
-				console.log('Run view ready!');
 				Utils.loadProvenanceConfig().then((config: ProvenanceConfig) => {
 					Utils.loadContractFunctions().then((funcs: SmartContractFunctions) => {
+						console.log('Contract functions loaded');
 						RunPanelViewUpdater.functions = funcs;
 						RunPanelViewUpdater.update(config);
 					}).catch((err) => {
@@ -856,6 +879,9 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// update status bar item once at start
 	updateStatusBar();
+
+	// create the global sate
+	globalState = new GlobalState(context);
 
 	// create the Chain View Panel
 	chainPanelView = new ChainPanelViewLoader(context.extensionPath, context);
