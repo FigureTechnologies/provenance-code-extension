@@ -2,9 +2,11 @@ import * as vscode from 'vscode';
 import { v4 as uuidv4 } from 'uuid';
 import { BehaviorSubject, Observable } from 'rxjs';
 
+import { EmptyGitUserConfig, GitUserConfig } from './git-user-config';
 import { ProvenanceAccountBalance } from './provenance-account-balance';
 import { ProvenanceKey } from './provenance-key';
 import { ProvenanceMarker, ProvenanceMarkerAccessControl } from './provenance-marker';
+import { SmartContractTemplate } from './smart-contract-template';
 
 export interface EventData {
 }
@@ -23,16 +25,20 @@ export enum Alert {
 export enum Command {
     Ready = 'ready',
     DataChange = 'data-change',
+    
     Alert = 'alert',
     ClearAlerts = 'clear-alerts',
+
     GetAccountBalancesRequest = 'get-account-balances-request',
     GetAccountBalancesResponse = 'get-account-balances-response',
+
     CreateKeyRequest = "create-key-request",
     CreateKeyResponse = "create-key-response",
     RecoverKeyRequest = "recover-key-request",
     RecoverKeyResponse = "recover-key-response",
     DeleteKeyRequest = "delete-key-request",
     DeleteKeyResponse = "delete-key-response",
+
     CreateMarkerRequest = "create-marker-request",
     CreateMarkerResponse = "create-marker-response",
     DeleteMarkerRequest = "delete-marker-request",
@@ -48,7 +54,12 @@ export enum Command {
     WithdrawMarkerCoinsRequest = "withdraw-marker-coins-request",
     WithdrawMarkerCoinsResponse = "withdraw-marker-coins-response",
     SendCoinRequest = "send-coin-request",
-    SendCoinResponse = "send-coin-response"
+    SendCoinResponse = "send-coin-response",
+
+    CreateNewProjectRequest = "create-new-project-request",
+    CreateNewProjectResponse = "create-new-project-response",
+    OpenProjectRequest = "open-project-request",
+    OpenProjectResponse = "open-project-response"
 }
 
 export enum CommandResult {
@@ -63,7 +74,10 @@ export interface Event {
 
 export enum DataBinding {
     Keys = 'keys',
-    Markers = 'markers'
+    Markers = 'markers',
+    Templates = 'templates',
+    RecentProjects = 'recent-projects',
+    GitUserConfig = 'git-user-config'
 }
 
 export interface AlertEvent extends EventData {
@@ -241,6 +255,41 @@ export interface SendCoinResponseEvent extends EventData {
     error: Error
 }
 
+export interface CreateNewProjectRequestEvent extends EventData {
+    id: string,
+    project: {
+        name: string,
+        location: string,
+        sourceRepo: string
+    },
+    template: {
+        name: string,
+        version: string
+    },
+    author: {
+        name: string,
+        email: string,
+        org: string
+    }
+}
+
+export interface CreateNewProjectResponseEvent extends EventData {
+    id: string,
+    result: CommandResult,
+    error: Error
+}
+
+export interface OpenProjectRequestEvent extends EventData {
+    id: string,
+    location: string
+}
+
+export interface OpenProjectResponseEvent extends EventData {
+    id: string,
+    result: CommandResult,
+    error: Error
+}
+
 export class ChainViewAppBinding {
     private static instance: ChainViewAppBinding;
 
@@ -251,6 +300,9 @@ export class ChainViewAppBinding {
 
     private _keys: BehaviorSubject<ProvenanceKey[]> = new BehaviorSubject<ProvenanceKey[]>([]);
     private _markers: BehaviorSubject<ProvenanceMarker[]> = new BehaviorSubject<ProvenanceMarker[]>([]);
+    private _templates: BehaviorSubject<SmartContractTemplate[]> = new BehaviorSubject<SmartContractTemplate[]>([]);
+    private _recentProjects: BehaviorSubject<string[]> = new BehaviorSubject<string[]>([]);
+    private _gitUserConfig: BehaviorSubject<GitUserConfig> = new BehaviorSubject<GitUserConfig>(EmptyGitUserConfig);
     private _alerts: BehaviorSubject<AlertEvent[]> = new BehaviorSubject<AlertEvent[]>([]);
 
     private constructor() { }
@@ -504,6 +556,43 @@ export class ChainViewAppBinding {
                     this.postSendCoinResponseEvent(sendCoinReq.id, CommandResult.Error, new Error('No request handler set.'));
                 }
             } break;
+
+            case Command.CreateNewProjectRequest: {
+                const createNewProjectReq = event.data as CreateNewProjectRequestEvent;
+                console.log(`Received request ${createNewProjectReq.id} to create new project ${createNewProjectReq.project.name} from template ${createNewProjectReq.template.name}`);
+                if (this.onCreateNewProjectRequestHandler) {
+                    this.onCreateNewProjectRequestHandler(
+                        createNewProjectReq.project.name,
+                        createNewProjectReq.project.location,
+                        createNewProjectReq.project.sourceRepo,
+                        createNewProjectReq.template.name,
+                        createNewProjectReq.template.version,
+                        createNewProjectReq.author.name,
+                        createNewProjectReq.author.email,
+                        createNewProjectReq.author.org,
+                    () => {
+                        this.postCreateNewProjectResponseEvent(createNewProjectReq.id, CommandResult.Success, undefined);
+                    }, (err: Error) => {
+                        this.postCreateNewProjectResponseEvent(createNewProjectReq.id, CommandResult.Error, err);
+                    });
+                } else {
+                    this.postCreateNewProjectResponseEvent(createNewProjectReq.id, CommandResult.Error, new Error('No request handler set.'));
+                }
+            } break;
+
+            case Command.OpenProjectRequest: {
+                const openProjectReq = event.data as OpenProjectRequestEvent;
+                console.log(`Received request ${openProjectReq.id} to open project ${openProjectReq.location}`);
+                if (this.onOpenProjectRequestHandler) {
+                    this.onOpenProjectRequestHandler(openProjectReq.location, () => {
+                        this.postOpenProjectResponseEvent(openProjectReq.id, CommandResult.Success, undefined);
+                    }, (err: Error) => {
+                        this.postOpenProjectResponseEvent(openProjectReq.id, CommandResult.Error, err);
+                    })
+                } else {
+                    this.postOpenProjectResponseEvent(openProjectReq.id, CommandResult.Error, new Error('No request handler set.'));
+                }
+            } break;
         }
     }
 
@@ -516,6 +605,12 @@ export class ChainViewAppBinding {
                     this._keys.next(dataChangeEvent.value);
                 } else if(dataChangeEvent.name == DataBinding.Markers) {
                     this._markers.next(dataChangeEvent.value);
+                } else if(dataChangeEvent.name == DataBinding.Templates) {
+                    this._templates.next(dataChangeEvent.value);
+                } else if(dataChangeEvent.name == DataBinding.RecentProjects) {
+                    this._recentProjects.next(dataChangeEvent.value);
+                } else if(dataChangeEvent.name == DataBinding.GitUserConfig) {
+                    this._gitUserConfig.next(dataChangeEvent.value);
                 }
             } break;
 
@@ -625,6 +720,22 @@ export class ChainViewAppBinding {
                     this.responseHandlers[sendCoinResponseEvent.id](sendCoinResponseEvent);
                 }
             } break;
+
+            case Command.CreateNewProjectResponse: {
+                const createNewProjectResponseEvent: CreateNewProjectResponseEvent = event.data as CreateNewProjectResponseEvent;
+                console.dir(createNewProjectResponseEvent);
+                if (createNewProjectResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[createNewProjectResponseEvent.id](createNewProjectResponseEvent);
+                }
+            } break;
+
+            case Command.OpenProjectResponse: {
+                const openrojectResponseEvent: OpenProjectResponseEvent = event.data as OpenProjectResponseEvent;
+                console.dir(openrojectResponseEvent);
+                if (openrojectResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[openrojectResponseEvent.id](openrojectResponseEvent);
+                }
+            } break;
         }
     }
 
@@ -641,6 +752,27 @@ export class ChainViewAppBinding {
     }
     public get markers(): ProvenanceMarker[] { return this._markers.value }
     public get markersObservable(): Observable<ProvenanceMarker[]> { return this._markers }
+
+    public set gitUserConfig(gitUserConfig: GitUserConfig) {
+        this._gitUserConfig.next(gitUserConfig);
+        this.postDataChangeEvent(DataBinding.GitUserConfig, this._gitUserConfig.value);
+    }
+    public get gitUserConfig(): GitUserConfig { return this._gitUserConfig.value }
+    public get gitUserConfigObservable(): Observable<GitUserConfig> { return this._gitUserConfig }
+
+    public set templates(templates: SmartContractTemplate[]) {
+        this._templates.next(templates);
+        this.postDataChangeEvent(DataBinding.Templates, this._templates.value);
+    }
+    public get templates(): SmartContractTemplate[] { return this._templates.value }
+    public get templatesObservable(): Observable<SmartContractTemplate[]> { return this._templates }
+
+    public set recentProjects(recentProjects: string[]) {
+        this._recentProjects.next(recentProjects);
+        this.postDataChangeEvent(DataBinding.RecentProjects, this._recentProjects.value);
+    }
+    public get recentProjects(): string[] { return this._recentProjects.value }
+    public get recentProjectsObservable(): Observable<string[]> { return this._recentProjects }
 
     public get alerts(): AlertEvent[] { return this._alerts.value }
     public get alertsObservable(): Observable<AlertEvent[]> { return this._alerts }
@@ -1037,6 +1169,81 @@ export class ChainViewAppBinding {
         });
     }
 
+    onCreateNewProjectRequest(handler: ((name: string, location: string, repo: string, template: string, version: string, author: string, email: string, org: string, resolve: (() => void), reject: ((err: Error) => void)) => void)) {
+        this.onCreateNewProjectRequestHandler = handler;
+    }
+    private onCreateNewProjectRequestHandler: ((name: string, location: string, repo: string, template: string, version: string, author: string, email: string, org: string, resolve: (() => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public createNewProject (projectName: string, projectLocation: string, selectedTemplate: string, templateVersion: string, authorName: string, authorEmail: string, authorOrg: string, sourceRepo: string): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            if (this._vscode) {
+                const createNewProjectReqData: CreateNewProjectRequestEvent = {
+                    id: uuidv4(),
+                    project: {
+                        name: projectName,
+                        location: projectLocation,
+                        sourceRepo: sourceRepo
+                    },
+                    template: {
+                        name: selectedTemplate,
+                        version: templateVersion
+                    },
+                    author: {
+                        name: authorName,
+                        email: authorEmail,
+                        org: authorOrg
+                    }
+                };
+                const createNewProjectReqMessage: Event = {
+                    command: Command.CreateNewProjectRequest,
+                    data: createNewProjectReqData
+                };
+                this.registerResponse(createNewProjectReqData.id, (eventData: EventData) => {
+                    const createNewProjectResMessage = eventData as CreateNewProjectResponseEvent;
+                    if (createNewProjectResMessage.result == CommandResult.Success) {
+                        resolve();
+                    } else {
+                        reject(createNewProjectResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(createNewProjectReqMessage);
+            } else {
+                reject(new Error('Cannot execute `createNewProject` from VSCode'));
+            }
+        });
+    }
+
+    onOpenProjectRequest(handler: ((location: string, resolve: (() => void), reject: ((err: Error) => void)) => void)) {
+        this.onOpenProjectRequestHandler = handler;
+    }
+    private onOpenProjectRequestHandler: ((location: string, resolve: (() => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public openProject (projectLocation: string): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            if (this._vscode) {
+                const openProjectReqData: OpenProjectRequestEvent = {
+                    id: uuidv4(),
+                    location: projectLocation
+                };
+                const openProjectReqMessage: Event = {
+                    command: Command.OpenProjectRequest,
+                    data: openProjectReqData
+                };
+                this.registerResponse(openProjectReqData.id, (eventData: EventData) => {
+                    const openProjectResMessage = eventData as OpenProjectResponseEvent;
+                    if (openProjectResMessage.result == CommandResult.Success) {
+                        resolve();
+                    } else {
+                        reject(openProjectResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(openProjectReqMessage);
+            } else {
+                reject(new Error('Cannot execute `openProject` from VSCode'));
+            }
+        });
+    }
+
     public static getCodeInstance(webview: vscode.Webview): ChainViewAppBinding {
         if (!ChainViewAppBinding.instance) {
             ChainViewAppBinding.instance = new ChainViewAppBinding();
@@ -1248,6 +1455,34 @@ export class ChainViewAppBinding {
         if (this._webview) {
             let event: Event = {
                 command: Command.SendCoinResponse,
+                data: {
+                    id: id,
+                    result: result,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postCreateNewProjectResponseEvent(id: string, result: CommandResult, error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.CreateNewProjectResponse,
+                data: {
+                    id: id,
+                    result: result,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postOpenProjectResponseEvent(id: string, result: CommandResult, error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.OpenProjectResponse,
                 data: {
                     id: id,
                     result: result,
