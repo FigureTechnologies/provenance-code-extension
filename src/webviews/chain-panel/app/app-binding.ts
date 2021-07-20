@@ -59,7 +59,9 @@ export enum Command {
     CreateNewProjectRequest = "create-new-project-request",
     CreateNewProjectResponse = "create-new-project-response",
     OpenProjectRequest = "open-project-request",
-    OpenProjectResponse = "open-project-response"
+    OpenProjectResponse = "open-project-response",
+    ClearRecentProjectsRequest = "clear-recent-projects-request",
+    ClearRecentProjectsResponse = "clear-recent-projects-response"
 }
 
 export enum CommandResult {
@@ -285,6 +287,16 @@ export interface OpenProjectRequestEvent extends EventData {
 }
 
 export interface OpenProjectResponseEvent extends EventData {
+    id: string,
+    result: CommandResult,
+    error: Error
+}
+
+export interface ClearRecentProjectsRequestEvent extends EventData {
+    id: string
+}
+
+export interface ClearRecentProjectsResponseEvent extends EventData {
     id: string,
     result: CommandResult,
     error: Error
@@ -591,6 +603,20 @@ export class ChainViewAppBinding {
                     })
                 } else {
                     this.postOpenProjectResponseEvent(openProjectReq.id, CommandResult.Error, new Error('No request handler set.'));
+                }
+            } break;
+
+            case Command.ClearRecentProjectsRequest: {
+                const clearRecentProjectsReq = event.data as ClearRecentProjectsRequestEvent;
+                console.log(`Received request ${clearRecentProjectsReq.id} to clear recent projects`);
+                if (this.onClearRecentProjectsRequestHandler) {
+                    this.onClearRecentProjectsRequestHandler(() => {
+                        this.postClearRecentProjectsResponseEvent(clearRecentProjectsReq.id, CommandResult.Success, undefined);
+                    }, (err: Error) => {
+                        this.postClearRecentProjectsResponseEvent(clearRecentProjectsReq.id, CommandResult.Error, err);
+                    })
+                } else {
+                    this.postClearRecentProjectsResponseEvent(clearRecentProjectsReq.id, CommandResult.Error, new Error('No request handler set.'));
                 }
             } break;
         }
@@ -1244,6 +1270,36 @@ export class ChainViewAppBinding {
         });
     }
 
+    onClearRecentProjectsRequest(handler: ((resolve: (() => void), reject: ((err: Error) => void)) => void)) {
+        this.onClearRecentProjectsRequestHandler = handler;
+    }
+    private onClearRecentProjectsRequestHandler: ((resolve: (() => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public clearRecentProjects (): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            if (this._vscode) {
+                const clearRecentProjectsReqData: ClearRecentProjectsRequestEvent = {
+                    id: uuidv4()
+                };
+                const clearRecentProjectsReqMessage: Event = {
+                    command: Command.ClearRecentProjectsRequest,
+                    data: clearRecentProjectsReqData
+                };
+                this.registerResponse(clearRecentProjectsReqData.id, (eventData: EventData) => {
+                    const clearRecentProjectsResMessage = eventData as ClearRecentProjectsResponseEvent;
+                    if (clearRecentProjectsResMessage.result == CommandResult.Success) {
+                        resolve();
+                    } else {
+                        reject(clearRecentProjectsResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(clearRecentProjectsReqMessage);
+            } else {
+                reject(new Error('Cannot execute `openProject` from VSCode'));
+            }
+        });
+    }
+
     public static getCodeInstance(webview: vscode.Webview): ChainViewAppBinding {
         if (!ChainViewAppBinding.instance) {
             ChainViewAppBinding.instance = new ChainViewAppBinding();
@@ -1483,6 +1539,20 @@ export class ChainViewAppBinding {
         if (this._webview) {
             let event: Event = {
                 command: Command.OpenProjectResponse,
+                data: {
+                    id: id,
+                    result: result,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postClearRecentProjectsResponseEvent(id: string, result: CommandResult, error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.ClearRecentProjectsResponse,
                 data: {
                     id: id,
                     result: result,

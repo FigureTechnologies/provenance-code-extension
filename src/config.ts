@@ -15,22 +15,3 @@ export class Config {
         }
     ];
 }
-
-/*
-    // $ git config user.name
-    // $ git config user.email
-
-    var view = {
-        contract: {
-            name: "empty-smart-contract-template",
-            snake: "empty_smart_contract_template",
-        },
-        git: {
-            userName: "kherzinger-figure",
-            emailAddress: "kherzinger@figure.com",
-            repoUrl: ""
-        },
-        company: "figure"
-    };
-    var output = Mustache.render(input, view);
-*/
