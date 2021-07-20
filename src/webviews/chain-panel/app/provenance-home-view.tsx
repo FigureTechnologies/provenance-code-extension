@@ -54,6 +54,10 @@ export default class ProvenanceHomeView extends React.Component<ProvenanceHomeVi
             });
         }
 
+        const clearRecentProjects = () => {
+            Utils.clearRecentProjects().finally(() => {})
+        }
+
         return (
             <React.Fragment>
                 <Container fluid>
@@ -88,6 +92,7 @@ export default class ProvenanceHomeView extends React.Component<ProvenanceHomeVi
                                 {recentProjects.map((recentProject, idx) => 
                                     <div><a href="#" onClick={() => openProject(recentProject)}>{recentProject}</a></div>
                                 )}
+                                <div><a className="clear-recent-link" href="#" onClick={() => clearRecentProjects()}>Clear recent</a></div>
                             </div>}
                         </Col>
                     </Row>

@@ -580,6 +580,15 @@ export class Utils {
         });
     }
 
+    static clearRecentProjects(): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            const globalState = GlobalState.get();
+            globalState.recentProjects.projectLocations = [];
+            globalState.save();
+            resolve();
+        });
+    }
+
     static createProjectFromTemplate(name: string, location: string, repo: string, template: string, version: string, author: string, email: string, org: string): Promise<void> {
         return new Promise<void>((resolve, reject) => {
             const templateCache = GlobalState.get().templateCache;

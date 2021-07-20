@@ -677,6 +677,18 @@ export function activate(context: vscode.ExtensionContext) {
 					reject(err);
 				});
 			});
+
+			chainViewApp.onClearRecentProjectsRequest((resolve: (() => void), reject: ((err: Error) => void)) => {
+				console.log('onClearRecentProjectsRequest');
+
+				Utils.clearRecentProjects().then(() => {
+					ChainPanelViewUpdater.update(ChainPanelViewUpdater.ChainPanelViewUpdateType.RecentProjects);
+					resolve();
+				}).catch((err) => {
+					vscode.window.showErrorMessage(err.message);
+					reject(err);
+				});
+			});
 		});
 	});
 
