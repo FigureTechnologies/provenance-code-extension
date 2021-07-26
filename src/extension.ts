@@ -406,7 +406,7 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 
 	let chainUtils = vscode.commands.registerCommand(chainUtilsCommand, () => {
-		chainViewApp = ChainViewAppBinding.getCodeInstance(chainPanelView.showView(`Provenance: Blockchain Utils`));
+		chainViewApp = ChainViewAppBinding.getCodeInstance(chainPanelView.showView(`Provenance`));
 		ChainPanelViewUpdater.chainViewApp = chainViewApp;
 		chainPanelView.onDispose(() => {
 			console.log('chainPanelView.onDispose');
@@ -689,6 +689,15 @@ export function activate(context: vscode.ExtensionContext) {
 					reject(err);
 				});
 			});
+
+			chainViewApp.onSetShowOnStartupRequest((showOnStartup: boolean, resolve: (() => void), reject: ((err: Error) => void)) => {
+				console.log('onSetShowOnStartupRequest');
+
+				const config = vscode.workspace.getConfiguration('provenance') || <any>{};
+				config.update('showHomeOnStartup', showOnStartup, true);
+
+				resolve();
+			});
 		});
 	});
 
@@ -900,6 +909,13 @@ export function activate(context: vscode.ExtensionContext) {
 
 	// create the Run View Panel
 	runPanelView = new RunPanelViewLoader(context.extensionPath, context);
+
+	// show chain utils on startup
+	const config = vscode.workspace.getConfiguration('provenance') || <any>{};
+	var showHomeOnStartup = config.get('showHomeOnStartup');
+	if (showHomeOnStartup) {
+		vscode.commands.executeCommand(chainUtilsCommand);
+	}
 }
 
 function updateStatusBar(): void {

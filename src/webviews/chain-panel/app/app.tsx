@@ -1,11 +1,12 @@
 import * as React from "react";
 import './app.scss';
 
-import { Alert, Col, Container, Nav, Navbar, Row } from 'react-bootstrap';
+import { Alert, Col, Container, Form, Nav, Navbar, Row } from 'react-bootstrap';
 import { ProvenanceKey } from './provenance-key';
 import { ProvenanceMarker } from './provenance-marker';
 import { SmartContractTemplate } from "./smart-contract-template";
 import { AlertEvent, ChainViewAppBinding, Command, Event } from './app-binding';
+import { Utils } from './app-utils';
 
 import { GitUserConfig } from "./git-user-config";
 import ProvenanceHomeView from './provenance-home-view';
@@ -33,6 +34,7 @@ interface AppState {
     gitUserConfig: GitUserConfig,
     templates: SmartContractTemplate[],
     recentProjects: string[],
+    showOnStartup: boolean,
     activeView: string,
     alerts: AlertEvent[]
 }
@@ -50,6 +52,7 @@ export class App extends React.Component<AppProps, AppState> {
             gitUserConfig: this.appBinding.gitUserConfig,
             templates: this.appBinding.templates,
             recentProjects: this.appBinding.recentProjects,
+            showOnStartup: this.appBinding.showOnStartupConfig,
             activeView: HOME_VIEW,
             alerts: []
         };
@@ -84,6 +87,12 @@ export class App extends React.Component<AppProps, AppState> {
             });
         });
 
+        this.appBinding.showOnStartupConfigObservable.subscribe((showOnStartup) => {
+            this.setState({
+                showOnStartup: showOnStartup
+            });
+        });
+
         this.appBinding.alertsObservable.subscribe((alerts) => {
             this.setState({
                 alerts: alerts
@@ -112,6 +121,14 @@ export class App extends React.Component<AppProps, AppState> {
             this.appBinding.clearAlert(id);
         };
 
+        const toggleShowOnStartup = () => {
+            var newState = !this.state.showOnStartup;
+            this.setState({
+                showOnStartup: newState
+            });
+            Utils.setShowOnStartup(newState).finally(() => {});
+        }
+
         return (
             <Container>
                 <Navbar collapseOnSelect expand="sm" bg="dark" variant="dark" fixed="top">
@@ -128,6 +145,16 @@ export class App extends React.Component<AppProps, AppState> {
                             <Nav.Link active={this.state.activeView == HOME_VIEW} onClick={() => setActiveView(HOME_VIEW)}>Home</Nav.Link>
                             <Nav.Link active={this.state.activeView == ACCOUNTS_VIEW} onClick={() => setActiveView(ACCOUNTS_VIEW)}>Accounts</Nav.Link>
                             <Nav.Link active={this.state.activeView == MARKERS_VIEW} onClick={() => setActiveView(MARKERS_VIEW)}>Markers</Nav.Link>
+                        </Nav>
+                        <Nav>
+                            <Form>
+                                <Form.Switch 
+                                    id="show-on-startup"
+                                    label="Show on startup"
+                                    checked={this.state.showOnStartup}
+                                    onChange={toggleShowOnStartup}
+                                />
+                            </Form>
                         </Nav>
                     </Navbar.Collapse>
                 </Navbar>

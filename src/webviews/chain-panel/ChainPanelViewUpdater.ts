@@ -11,6 +11,7 @@ enum ChainPanelViewUpdateType {
 	Templates,
 	RecentProjects,
 	GitUserConfig,
+	ShowOnStartupConfig,
     All
 }
 
@@ -69,6 +70,14 @@ export class ChainPanelViewUpdater {
 				}).catch((err) => {
 					vscode.window.showErrorMessage(err.message);
 				});
+			}
+
+			// update the show on startup config
+			if (type == ChainPanelViewUpdateType.All || type == ChainPanelViewUpdateType.ShowOnStartupConfig) {
+				console.log(`Setting show on startup config...`);
+				const config = vscode.workspace.getConfiguration('provenance') || <any>{};
+				var showHomeOnStartup = config.get('showHomeOnStartup');
+				ChainPanelViewUpdater.chainViewApp.showOnStartupConfig = showHomeOnStartup ? true : false;
 			}
 
 		}
