@@ -158,6 +158,11 @@
 					"type": "boolean",
 					"default": true,
 					"description": "Indicates this command should use the testnet configuration (--test-net)."
+				},
+				"provenance.showHomeOnStartup": {
+					"type": "boolean",
+					"default": true,
+					"description": "Automatically show the Provenance UI on startup."
 				}
 			}
 		},

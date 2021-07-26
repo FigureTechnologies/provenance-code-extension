@@ -119,6 +119,11 @@ export class Utils {
         return appBinding.clearRecentProjects();
     }
 
+    static setShowOnStartup(showOnStartup: boolean): Promise<void> {
+        const appBinding: ChainViewAppBinding = ChainViewAppBinding.getReactInstance();
+        return appBinding.setShowOnStartup(showOnStartup);
+    }
+
     static getKeyForAddress (keys: ProvenanceKey[], address: string): (ProvenanceKey | undefined) {
         return keys.find((key) => {
             return (key.address == address);

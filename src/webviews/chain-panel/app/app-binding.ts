@@ -61,7 +61,10 @@ export enum Command {
     OpenProjectRequest = "open-project-request",
     OpenProjectResponse = "open-project-response",
     ClearRecentProjectsRequest = "clear-recent-projects-request",
-    ClearRecentProjectsResponse = "clear-recent-projects-response"
+    ClearRecentProjectsResponse = "clear-recent-projects-response",
+
+    SetShowOnStartupRequest = "set-show-on-startup-request",
+    SetShowOnStartupResponse = "set-show-on-startup-response"
 }
 
 export enum CommandResult {
@@ -79,7 +82,8 @@ export enum DataBinding {
     Markers = 'markers',
     Templates = 'templates',
     RecentProjects = 'recent-projects',
-    GitUserConfig = 'git-user-config'
+    GitUserConfig = 'git-user-config',
+    ShowOnStartupConfig = 'show-on-startup-config'
 }
 
 export interface AlertEvent extends EventData {
@@ -302,6 +306,17 @@ export interface ClearRecentProjectsResponseEvent extends EventData {
     error: Error
 }
 
+export interface SetShowOnStartupRequestEvent extends EventData {
+    id: string,
+    showOnStartup: boolean
+}
+
+export interface SetShowOnStartupResponseEvent extends EventData {
+    id: string,
+    result: CommandResult,
+    error: Error
+}
+
 export class ChainViewAppBinding {
     private static instance: ChainViewAppBinding;
 
@@ -315,6 +330,7 @@ export class ChainViewAppBinding {
     private _templates: BehaviorSubject<SmartContractTemplate[]> = new BehaviorSubject<SmartContractTemplate[]>([]);
     private _recentProjects: BehaviorSubject<string[]> = new BehaviorSubject<string[]>([]);
     private _gitUserConfig: BehaviorSubject<GitUserConfig> = new BehaviorSubject<GitUserConfig>(EmptyGitUserConfig);
+    private _showOnStartup: BehaviorSubject<boolean> = new BehaviorSubject<boolean>(false);
     private _alerts: BehaviorSubject<AlertEvent[]> = new BehaviorSubject<AlertEvent[]>([]);
 
     private constructor() { }
@@ -619,6 +635,20 @@ export class ChainViewAppBinding {
                     this.postClearRecentProjectsResponseEvent(clearRecentProjectsReq.id, CommandResult.Error, new Error('No request handler set.'));
                 }
             } break;
+
+            case Command.SetShowOnStartupRequest: {
+                const setShowOnStartupReq = event.data as SetShowOnStartupRequestEvent;
+                console.log(`Received request ${setShowOnStartupReq.id} to set show on startup to ${setShowOnStartupReq.showOnStartup}`);
+                if (this.onSetShowOnStartupRequestHandler) {
+                    this.onSetShowOnStartupRequestHandler(setShowOnStartupReq.showOnStartup, () => {
+                        this.postSetShowOnStartupResponseEvent(setShowOnStartupReq.id, CommandResult.Success, undefined);
+                    }, (err: Error) => {
+                        this.postSetShowOnStartupResponseEvent(setShowOnStartupReq.id, CommandResult.Error, err);
+                    })
+                } else {
+                    this.postSetShowOnStartupResponseEvent(setShowOnStartupReq.id, CommandResult.Error, new Error('No request handler set.'));
+                }
+            } break;
         }
     }
 
@@ -637,6 +667,8 @@ export class ChainViewAppBinding {
                     this._recentProjects.next(dataChangeEvent.value);
                 } else if(dataChangeEvent.name == DataBinding.GitUserConfig) {
                     this._gitUserConfig.next(dataChangeEvent.value);
+                } else if(dataChangeEvent.name == DataBinding.ShowOnStartupConfig) {
+                    this._showOnStartup.next(dataChangeEvent.value);
                 }
             } break;
 
@@ -756,10 +788,26 @@ export class ChainViewAppBinding {
             } break;
 
             case Command.OpenProjectResponse: {
-                const openrojectResponseEvent: OpenProjectResponseEvent = event.data as OpenProjectResponseEvent;
-                console.dir(openrojectResponseEvent);
-                if (openrojectResponseEvent.id in this.responseHandlers) {
-                    this.responseHandlers[openrojectResponseEvent.id](openrojectResponseEvent);
+                const openProjectResponseEvent: OpenProjectResponseEvent = event.data as OpenProjectResponseEvent;
+                console.dir(openProjectResponseEvent);
+                if (openProjectResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[openProjectResponseEvent.id](openProjectResponseEvent);
+                }
+            } break;
+
+            case Command.ClearRecentProjectsResponse: {
+                const clearRecentProjectsResponseEvent: ClearRecentProjectsResponseEvent = event.data as ClearRecentProjectsResponseEvent;
+                console.dir(clearRecentProjectsResponseEvent);
+                if (clearRecentProjectsResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[clearRecentProjectsResponseEvent.id](clearRecentProjectsResponseEvent);
+                }
+            } break;
+
+            case Command.SetShowOnStartupResponse: {
+                const setShowOnStartupResponseEvent: SetShowOnStartupResponseEvent = event.data as SetShowOnStartupResponseEvent;
+                console.dir(setShowOnStartupResponseEvent);
+                if (setShowOnStartupResponseEvent.id in this.responseHandlers) {
+                    this.responseHandlers[setShowOnStartupResponseEvent.id](setShowOnStartupResponseEvent);
                 }
             } break;
         }
@@ -799,6 +847,13 @@ export class ChainViewAppBinding {
     }
     public get recentProjects(): string[] { return this._recentProjects.value }
     public get recentProjectsObservable(): Observable<string[]> { return this._recentProjects }
+
+    public set showOnStartupConfig(showOnStartupConfig: boolean) {
+        this._showOnStartup.next(showOnStartupConfig);
+        this.postDataChangeEvent(DataBinding.ShowOnStartupConfig, this._showOnStartup.value);
+    }
+    public get showOnStartupConfig(): boolean { return this._showOnStartup.value }
+    public get showOnStartupConfigObservable(): Observable<boolean> { return this._showOnStartup }
 
     public get alerts(): AlertEvent[] { return this._alerts.value }
     public get alertsObservable(): Observable<AlertEvent[]> { return this._alerts }
@@ -1295,7 +1350,38 @@ export class ChainViewAppBinding {
                 });
                 this._vscode.postMessage(clearRecentProjectsReqMessage);
             } else {
-                reject(new Error('Cannot execute `openProject` from VSCode'));
+                reject(new Error('Cannot execute `clearRecentProjects` from VSCode'));
+            }
+        });
+    }
+
+    onSetShowOnStartupRequest(handler: ((show: boolean, resolve: (() => void), reject: ((err: Error) => void)) => void)) {
+        this.onSetShowOnStartupRequestHandler = handler;
+    }
+    private onSetShowOnStartupRequestHandler: ((show: boolean, resolve: (() => void), reject: ((err: Error) => void)) => void) | undefined = undefined;
+
+    public setShowOnStartup(showOnStartup: boolean): Promise<void> {
+        return new Promise<void>((resolve, reject) => {
+            if (this._vscode) {
+                const setShowOnStartupReqData: SetShowOnStartupRequestEvent = {
+                    id: uuidv4(),
+                    showOnStartup: showOnStartup
+                };
+                const setShowOnStartupReqMessage: Event = {
+                    command: Command.SetShowOnStartupRequest,
+                    data: setShowOnStartupReqData
+                };
+                this.registerResponse(setShowOnStartupReqData.id, (eventData: EventData) => {
+                    const setShowOnStartupResMessage = eventData as SetShowOnStartupResponseEvent;
+                    if (setShowOnStartupResMessage.result == CommandResult.Success) {
+                        resolve();
+                    } else {
+                        reject(setShowOnStartupResMessage.error);
+                    }
+                });
+                this._vscode.postMessage(setShowOnStartupReqMessage);
+            } else {
+                reject(new Error('Cannot execute `setShowOnStartup` from VSCode'));
             }
         });
     }
@@ -1553,6 +1639,20 @@ export class ChainViewAppBinding {
         if (this._webview) {
             let event: Event = {
                 command: Command.ClearRecentProjectsResponse,
+                data: {
+                    id: id,
+                    result: result,
+                    error: error
+                }
+            };
+            this._webview.postMessage(event);
+        }
+    }
+
+    private postSetShowOnStartupResponseEvent(id: string, result: CommandResult, error: (Error | undefined)) {
+        if (this._webview) {
+            let event: Event = {
+                command: Command.SetShowOnStartupResponse,
                 data: {
                     id: id,
                     result: result,
